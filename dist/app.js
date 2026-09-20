@@ -34,13 +34,21 @@ function pick(slot){
  if(stage!=='draw'||drawn.length===8)throw new Error('请先开始新一轮抽牌。');
  if(!Number.isInteger(slot)||slot<0||slot>=Math.min(12,deck.length))throw new Error('请选择展开牌堆中的有效位置。');
  if(busy)return {busy:true,count:drawn.length};
- drawn.push(deck.splice(slot,1)[0]);busy=true;renderDraw();
+ const card=deck.splice(slot,1)[0],round=deck;
+ drawn.push(card);busy=true;
+ const selected=app.querySelector(`[data-slot="${slot}"]`);
+ app.querySelectorAll('[data-slot]').forEach(b=>b.disabled=true);
+ selected.innerHTML=`<span class="flip-inner"><span class="flip-back"></span><img class="flip-front" src="${cardImage(card)}" alt="${card.name}"></span>`;
+ selected.classList.add('flipping');
+ selected.setAttribute('aria-label',`抽中${card.name}`);
+ const duration=window.matchMedia('(prefers-reduced-motion: reduce)').matches?0:900;
  setTimeout(()=>{
+  if(deck!==round)return;
   busy=false;
   if(stage!=='draw')return;
-  app.querySelectorAll('[data-slot]').forEach(b=>b.disabled=false);
+  renderDraw();
   app.querySelector(drawn.length===8?'#read':`[data-slot="${slot}"]`)?.focus({preventScroll:true});
- },450);
+ },duration);
  return {count:drawn.length,domain:domains[drawn.length-1].name,card:drawn[drawn.length-1].name};
 }
 function showResults(){
