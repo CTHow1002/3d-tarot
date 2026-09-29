@@ -1,0 +1,262 @@
+import assert from 'node:assert/strict';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { TAROT_CARDS } from '../src/data/cards.js';
+import { DOMAINS } from '../src/data/domains.js';
+import { altarNodePose } from '../src/scene/Altar.js';
+import {
+  advanceFanInertia,
+  drawStageSpreadPose,
+  FAN_INERTIA_STOP_VELOCITY,
+  fanLayerPose,
+  getLayoutProfile,
+  normalizeDrawOffset,
+  replaceDrawPoolCard,
+  readingExtractionPose,
+  readingRetreatPose,
+  readingSafePlaneZ,
+  readingPose,
+  resultSpreadPose,
+  revealPose,
+  rotateDrawPool
+} from '../src/scene/TarotScene.js';
+import { TarotState } from '../src/state/tarot-state.js';
+import { pause, tween } from '../src/animation/tween.js';
+
+assert.equal(TAROT_CARDS.length, 78, 'Expected all 78 tarot cards');
+assert.equal(new Set(TAROT_CARDS.map((card) => card.id)).size, 78, 'Card ids must be unique');
+assert.equal(DOMAINS.length, 8, 'Expected eight reading domains');
+assert.ok(TAROT_CARDS.every((card) => card.readings.length === 8), 'Every card needs eight readings');
+assert.ok(TAROT_CARDS.every((card) => card.readings.every((reading) => reading.reversed && typeof reading.reversed.theme === 'string' && typeof reading.reversed.advice === 'string')), 'Every reading needs reversed data');
+
+const cardsDir = resolve('public/cards');
+const assets = new Set(readdirSync(cardsDir).filter((file) => file.endsWith('.webp')).map((file) => file.slice(0, -5)));
+assert.ok(existsSync(resolve('public/card-back.png')), 'Missing card-back asset');
+assert.ok(TAROT_CARDS.every((card) => assets.has(card.id)), 'Every tarot card needs a matching WebP asset');
+for (const asset of ['altar-main.png', 'altar-node.png', 'altar-glint.png', 'altar-crescent.png']) {
+  assert.ok(existsSync(resolve('public/altar', asset)), `Missing altar asset: ${asset}`);
+}
+
+const layouts = [
+  [390, 844, 'standard-mobile'],
+  [375, 667, 'compact'],
+  [430, 932, 'standard-mobile'],
+  [1024, 768, 'desktop']
+].map(([width, height, name]) => {
+  const layout = getLayoutProfile(width, height);
+  assert.equal(layout.name, name, `Expected ${name} layout at ${width}x${height}`);
+  for (const key of ['fanY', 'fanStepX', 'fanLayerStep', 'revealY', 'revealZ', 'revealScale', 'stagingTopY', 'stagingBottomY', 'stagingStepX', 'stagingScale', 'resultRadiusX', 'resultRadiusY', 'nodeDrawRadiusX', 'nodeDrawRadiusY', 'nodeDrawCenterY', 'nodeOutsetVertical', 'nodeOutsetDiagonal', 'nodeOutsetHorizontal', 'nodeScale', 'resultBaseZ', 'resultDepth', 'resultCameraZ', 'resultTargetY', 'readingTargetY', 'readingRetreatZ', 'readingRetreatScale', 'readingSafePlaneGap', 'readingY', 'readingZ', 'readingScale']) {
+    assert.ok(Number.isFinite(layout[key]), `${name} layout needs ${key}`);
+  }
+  return layout;
+});
+
+const mobileLayout = layouts[0];
+const compactLayout = layouts[1];
+const wideMobileLayout = layouts[2];
+const drawTop = drawStageSpreadPose(0, mobileLayout);
+const drawBottom = drawStageSpreadPose(4, mobileLayout);
+const resultTop = resultSpreadPose(0, mobileLayout);
+const reveal = revealPose(mobileLayout);
+const readingForeground = readingPose(mobileLayout);
+assert.ok(drawTop.position.y > drawBottom.position.y, 'The staging top row must sit above its bottom row');
+assert.ok(resultTop.position.y > 0, 'Domain one must visually sit at the top of the final spread');
+assert.notDeepEqual(drawTop.position, resultTop.position, 'Staging and result spreads need separate poses');
+assert.ok(reveal.position.y < drawBottom.position.y && reveal.position.z > drawBottom.position.z, 'Reveal must sit in front of and below the staging layout');
+assert.ok(readingForeground.position.z > resultTop.position.z, 'Reading card must move toward the foreground');
+assert.notDeepEqual(readingPose(compactLayout).position, readingPose(wideMobileLayout).position, 'Reading card pose must adapt between mobile layouts');
+for (const layout of layouts) {
+  const anchors = Array.from({ length: 8 }, (_, index) => altarNodePose(index, layout));
+  assert.equal(anchors.length, 8, `${layout.name} needs eight altar anchors`);
+  assert.equal(new Set(anchors.map(({ x, y }) => `${x}:${y}`)).size, 8, `${layout.name} altar anchors must remain distinct`);
+  assert.deepEqual(anchors, Array.from({ length: 8 }, (_, index) => altarNodePose(index, layout)), `${layout.name} altar anchors must be deterministic`);
+  assert.ok(anchors[0].y > anchors[4].y && anchors[2].x > anchors[6].x, `${layout.name} altar anchor mapping must remain orbital`);
+  const staging = Array.from({ length: 8 }, (_, index) => drawStageSpreadPose(index, layout));
+  const lowestStagingEdge = Math.min(...staging.map((item) => item.position.y - item.scale.y * 1.17 / 2));
+  const fanTopEdge = layout.fanY + layout.fanCenterLift + layout.fanScale * 1.17 / 2;
+  assert.ok(lowestStagingEdge - fanTopEdge > 0.1, `${layout.name} staging cards must remain above the fan`);
+  assert.equal(new Set(staging.slice(0, 4).map((item) => item.position.x)).size, 4, `${layout.name} staging top row needs four distinct slots`);
+  const result = Array.from({ length: 8 }, (_, index) => resultSpreadPose(index, layout));
+  const resultNodes = Array.from({ length: 8 }, (_, index) => altarNodePose(index, layout, 'result'));
+  const safePlane = readingSafePlaneZ(layout);
+  const maxResultZ = Math.max(...result.map((item) => item.position.z));
+  assert.equal(result.length, 8, `${layout.name} needs eight final result slots`);
+  assert.ok(resultNodes.every((node) => Number.isFinite(node.x) && Number.isFinite(node.y)), `${layout.name} result nodes need valid positions`);
+  assert.equal(new Set(result.map((item) => `${item.position.x}:${item.position.y}`)).size, 8, `${layout.name} result slots must remain distinct`);
+  assert.ok(result.every((item) => item.rotation.y === Math.PI), `${layout.name} result cards must stay frontal-readable`);
+  assert.ok(safePlane > maxResultZ, `${layout.name} safe plane must sit in front of every result card`);
+  assert.ok(readingPose(layout).position.z >= safePlane, `${layout.name} reading pose must remain in the foreground corridor`);
+  result.forEach((item, index) => {
+    const receded = readingRetreatPose(item, layout);
+    const extraction = readingExtractionPose(item, layout);
+    assert.ok(receded.position.z < item.position.z && receded.scale.x < item.scale.x, `${layout.name} background cards must recede during reading`);
+    assert.equal(extraction.position.x, item.position.x, `${layout.name} extraction must hold slot X`);
+    assert.equal(extraction.position.y, item.position.y, `${layout.name} extraction must hold slot Y`);
+    assert.equal(extraction.rotation.z, item.rotation.z, `${layout.name} extraction must freeze slot rotation`);
+    assert.equal(extraction.scale.x, item.scale.x, `${layout.name} extraction must freeze slot scale`);
+    assert.equal(extraction.position.z, safePlane, `${layout.name} extraction must land on shared safe plane`);
+  });
+  result.forEach((item, index) => {
+    const neighbor = result[(index + 1) % result.length];
+    const overlapsInPlane = Math.abs(item.position.x - neighbor.position.x) < 0.39 * (item.scale.x + neighbor.scale.x)
+      && Math.abs(item.position.y - neighbor.position.y) < 0.585 * (item.scale.y + neighbor.scale.y);
+    if (overlapsInPlane) assert.ok(Math.abs(item.position.z - neighbor.position.z) > 0.09, `${layout.name} overlapping result neighbors need physical depth separation`);
+  });
+}
+
+for (const [width, height] of [[390, 844], [375, 667], [430, 932], [1024, 768]]) {
+  const layout = getLayoutProfile(width, height);
+  const aspect = width / height;
+  const nodeHalfWidth = 0.13 * layout.nodeScale * 1.05 / 2;
+  const nodeHalfHeight = 0.235 * layout.nodeScale * 1.05 / 2;
+  const drawDistance = layout.drawCameraZ + 0.6;
+  const drawHalfWidth = Math.tan(layout.drawFov * Math.PI / 360) * drawDistance * aspect;
+  const drawHalfHeight = Math.tan(layout.drawFov * Math.PI / 360) * drawDistance;
+  const drawNodes = Array.from({ length: 8 }, (_, index) => altarNodePose(index, layout, 'draw'));
+  assert.ok(drawNodes.every((node) => Math.abs(node.x) + nodeHalfWidth + 0.1 < drawHalfWidth), `${width}x${height} draw nodes need horizontal safe margin`);
+  assert.ok(drawNodes.every((node) => Math.abs(node.y) + nodeHalfHeight + 0.1 < drawHalfHeight), `${width}x${height} draw nodes need vertical safe margin`);
+  const fanTop = layout.fanY + layout.fanCenterLift + layout.fanScale * 1.17 / 2;
+  assert.ok(Math.min(...drawNodes.map((node) => node.y)) - nodeHalfHeight > fanTop, `${width}x${height} draw nodes must clear the card fan`);
+  const resultDistance = layout.resultCameraZ + 0.6;
+  const resultHalfWidth = Math.tan(layout.resultFov * Math.PI / 360) * resultDistance * aspect;
+  const resultNodes = Array.from({ length: 8 }, (_, index) => altarNodePose(index, layout, 'result'));
+  assert.ok(resultNodes.every((node) => Math.abs(node.x) + nodeHalfWidth < resultHalfWidth), `${width}x${height} result nodes must remain inside the camera frame`);
+}
+
+const visualPool = Array.from({ length: 15 }, (_, index) => index);
+for (let step = 0; step < 23; step += 1) rotateDrawPool(visualPool, 1);
+assert.equal(visualPool[7], 0, 'Fan must continue past twenty forward steps');
+for (let step = 0; step < 23; step += 1) rotateDrawPool(visualPool, -1);
+assert.deepEqual(visualPool, Array.from({ length: 15 }, (_, index) => index), 'Fan recycling must return to the same visual order');
+for (let step = 0; step < 31; step += 1) rotateDrawPool(visualPool, -1);
+assert.equal(visualPool[7], 6, 'Fan must continue past twenty reverse steps');
+
+const longOffset = normalizeDrawOffset(31.3);
+assert.equal(longOffset.steps, 31, 'Fan offset must recycle beyond any finite drag limit');
+assert.ok(Math.abs(longOffset.offset) < 0.5, 'Recycled fan offset must remain bounded');
+
+const replacementPool = Array.from({ length: 15 }, (_, index) => ({ visual: index }));
+const unusedVisuals = Array.from({ length: 9 }, (_, index) => ({ visual: index + 15 }));
+for (const selectedIndex of [0, 14, 7, 3, 11, 1, 13, 6]) {
+  const selected = replacementPool[selectedIndex];
+  const entry = replaceDrawPoolCard(replacementPool, unusedVisuals, selected);
+  assert.ok(entry, 'A visible visual card must be removable from the fan');
+  assert.equal(replacementPool.length, 15, 'Visual pool must stay at fifteen cards after replacement');
+  assert.ok(!replacementPool.includes(selected), 'The selected visual card must leave the fan');
+  assert.ok(entry.replacement, 'Each of eight draws needs a visual replacement');
+}
+
+let inertiaOffset = 0;
+let inertiaVelocity = 24;
+let inertiaFrames = 0;
+while (Math.abs(inertiaVelocity) >= FAN_INERTIA_STOP_VELOCITY && inertiaFrames < 300) {
+  const next = advanceFanInertia(inertiaOffset, inertiaVelocity, 1 / 60);
+  const normalized = normalizeDrawOffset(next.offset);
+  inertiaOffset = normalized.offset;
+  inertiaVelocity = next.velocity;
+  inertiaFrames += 1;
+}
+assert.ok(inertiaFrames < 300, 'Inertia must terminate');
+assert.ok(Math.abs(inertiaVelocity) < FAN_INERTIA_STOP_VELOCITY, 'Inertia velocity must decay below the settle threshold');
+assert.ok(Math.abs(inertiaOffset) < 0.5, 'Inertia recycling must keep the fan offset bounded');
+
+for (const layout of layouts) {
+  for (const drawOffset of [-0.49, -0.25, 0, 0.25, 0.49]) {
+    const poses = Array.from({ length: 9 }, (_, index) => fanLayerPose(index - 4 - drawOffset, layout, index - 4));
+    for (let index = 0; index < poses.length - 1; index += 1) {
+      const first = poses[index];
+      const second = poses[index + 1];
+      const overlappingHorizontally = Math.abs(first.position.x - second.position.x) < 0.78 * Math.max(first.scale.x, second.scale.x);
+      if (overlappingHorizontally) {
+        assert.ok(Math.abs(first.position.z - second.position.z) >= 0.065, `${layout.name} fan neighbors need physical depth separation at offset ${drawOffset}`);
+      }
+    }
+  }
+  const forwardBefore = fanLayerPose(-0.49, layout, 0).position.z;
+  const forwardAfterRecycle = fanLayerPose(-0.5, layout, 0).position.z;
+  const backwardBefore = fanLayerPose(0.49, layout, 0).position.z;
+  const backwardAfterRecycle = fanLayerPose(0.5, layout, 0).position.z;
+  assert.ok(Math.abs(forwardBefore - forwardAfterRecycle) < 0.01, `${layout.name} forward recycle must not pop`);
+  assert.ok(Math.abs(backwardBefore - backwardAfterRecycle) < 0.01, `${layout.name} backward recycle must not pop`);
+}
+
+const originalWindow = globalThis.window;
+globalThis.window = { matchMedia: () => ({ matches: true }) };
+let reducedMotionProgress = 0;
+await tween(240, (amount) => { reducedMotionProgress = amount; });
+assert.equal(reducedMotionProgress, 1, 'Reduced motion must complete the final state without an animation frame');
+const reducedMotionPause = await Promise.race([pause(240).then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 0))]);
+assert.equal(reducedMotionPause, true, 'Reduced motion pauses must resolve without waiting for a frame');
+if (originalWindow === undefined) delete globalThis.window;
+else globalThis.window = originalWindow;
+
+const stateSource = readFileSync(resolve('src/state/tarot-state.js'), 'utf8');
+const sceneSource = readFileSync(resolve('src/scene/TarotScene.js'), 'utf8');
+const mainSource = readFileSync(resolve('src/main.js'), 'utf8');
+const uiSource = readFileSync(resolve('src/ui/ui.js'), 'utf8');
+const altarSource = readFileSync(resolve('src/scene/Altar.js'), 'utf8');
+const cardSource = readFileSync(resolve('src/cards/Card3D.js'), 'utf8');
+const deprecatedOrientation = '\u53cd\u4f4d';
+assert.ok(!JSON.stringify(TAROT_CARDS).includes(deprecatedOrientation), 'Card readings must use standard reversed terminology');
+assert.ok(!uiSource.includes(deprecatedOrientation), 'UI labels and live status must use standard reversed terminology');
+assert.equal(uiSource.match(/card\.reversed \? '逆位' : '正位'/g)?.length, 3, 'Reading label, live status, and accessible result controls must use standard terminology');
+assert.match(stateSource, /< 0\.35/, 'Reversed probability must remain 35%');
+const reversedState = new TarotState(TAROT_CARDS);
+reversedState.drawn = [{ ...TAROT_CARDS[0], reversed: true }];
+assert.equal(reversedState.readingAt(0), TAROT_CARDS[0].readings[0].reversed, 'Reversed cards must resolve reversed readings');
+assert.match(sceneSource, /this\.reading = \{ index, card, slot: copyPose\(card\.group\), others \}/, 'Reading must retain selected and other Card3D source poses');
+assert.match(sceneSource, /if \(this\.stage === 'reading' && this\.reading\) \{[\s\S]*this\.reading\.slot = slots\[this\.reading\.index\];[\s\S]*applyPose\(this\.reading\.card\.group, this\.readingPose\(\)\);/, 'Reading resize must update selected card pose and return slot');
+assert.match(sceneSource, /const layoutVersion = this\.layoutVersion;[\s\S]*const isCurrentLayout = \(\) => layoutVersion === this\.layoutVersion/, 'Reading transitions must stop stale layout tweens after resize');
+assert.match(sceneSource, /await this\.animateFlight\(card, target\);\s*const landingTarget = this\.drawStageSpreadPose\(positionIndex\);\s*await this\.settleCard\(card, landingTarget\)/, 'Draw flight must settle at the latest layout target');
+assert.match(sceneSource, /await this\.animateSet\(clearing, 160, 0, easing\.outCubic, isCurrentLayout\);[\s\S]*this\.animateReadingOpenPath/, 'Other cards must clear before selected extraction');
+assert.match(sceneSource, /animateReadingOpenPath\(card, this\.reading\.slot, isCurrentLayout\)/, 'Reading open must use the selected Card3D safe extraction path');
+assert.match(sceneSource, /animateReadingReturnPath\(card, slot, isCurrentLayout\)/, 'Reading close must use the stored slot safe return path');
+assert.match(mainSource, /Promise\.race\(\[opening, pause\(\d+\)\]\)/, 'Reading panel must enter during selected-card movement');
+assert.match(mainSource, /await opening;\s*ui\.enableReadingDismiss\(\)/, 'Reading dismiss actions must wait until card transition finishes');
+assert.match(mainSource, /Promise\.all\(\[ui\.hideReading\(\), scene\.closeReading\(\)\]\)/, 'Reading panel and card return must close together');
+assert.match(uiSource, /reading-dismiss-layer" data-action="close-reading"/, 'Reading needs a dedicated outside-dismiss layer');
+assert.match(uiSource, /event\.key === 'Escape' && readingCanDismiss/, 'Reading Escape close must wait for the open transition');
+assert.match(uiSource, /button\.dataset\.action !== 'close-reading' \|\| readingCanDismiss/, 'Reading dismiss buttons must ignore duplicate or premature closes');
+assert.match(uiSource, /role="dialog" aria-modal="true"/, 'Reading panel must remain a modal dialog');
+assert.match(uiSource, /panels\.results\.inert = inert/, 'Results must become inert while Reading is open');
+assert.match(uiSource, /secondary-reset-button/, 'Restart controls must use the shared button treatment');
+assert.match(altarSource, /altar-main/, 'Celestial altar needs the supplied main ornament asset');
+assert.match(altarSource, /altar-node/, 'Celestial altar needs supplied jewel nodes');
+assert.doesNotMatch(altarSource, /makeOrnamentTexture|EllipseCurve/, 'Celestial altar must not retain procedural ornament geometry');
+assert.match(altarSource, /NODE_VISUALS/, 'Altar nodes need dormant, active, and filled visual targets');
+assert.match(altarSource, /awakenNode/, 'Altar nodes need an awakening transition');
+assert.match(altarSource, /setNodeFrame/, 'Altar nodes need draw and result spatial frames');
+assert.match(sceneSource, /this\.altar\.setNodeFrame\?\.\('result', 780\)/, 'Altar nodes must expand with the result transition');
+assert.doesNotMatch(altarSource, /setNodePosition|nodeAnchor/, 'Altar node anchors must not follow staging-card positions');
+assert.match(sceneSource, /this\.altar\.awakenNode\(positionIndex\)/, 'Node awakening must begin when a card is selected');
+assert.match(sceneSource, /this\.altar\.setNodeState\(positionIndex, 'filled'\)/, 'Node must settle after its card lands');
+assert.doesNotMatch(sceneSource, /setNodePosition|nodeAnchor/, 'Tarot flow must not reposition nodes from card transforms');
+assert.match(sceneSource, /await createAltar\(this\.textures\)/, 'Altar assets must load before the scene starts');
+assert.match(altarSource, /setReading/, 'Celestial altar must support a dimmed reading state');
+assert.match(altarSource, /if \(frozen\) return;/, 'Celestial altar motion must pause for reduced motion');
+assert.match(uiSource, /data-action="draw-current"/, 'Keyboard users need a way to select the center draw card');
+assert.match(uiSource, /data-result-actions/, 'Keyboard users need controls for each result card');
+assert.match(uiSource, /button\.dataset\.action = 'read-result'/, 'Result reading controls must open their matching cards');
+assert.match(mainSource, /'draw-current': \(\) => drawCard\(scene\?\.currentDrawCard\(\)\)/, 'Draw selection must use the same guarded draw flow');
+assert.match(mainSource, /'read-result': \(index\) => openReading\(Number\(index\)\)/, 'Result controls must use the existing reading flow');
+assert.match(mainSource, /第 ' \+ state\.drawn\.length \+ ' 张已落位/, 'Live status must announce settled draws and the next position');
+assert.match(uiSource, /event\.key === 'Tab' && !panels\.reading\.hidden/, 'Reading focus must remain inside the modal');
+assert.match(uiSource, /reading-copy" tabindex="0"/, 'Reading text must be keyboard-scrollable');
+assert.match(uiSource, /readingReturnFocus/, 'Closing a reading must restore focus to its trigger');
+assert.match(cardSource, /fog: false/, 'Card fronts must remain clear through the scene haze');
+assert.match(sceneSource, /this\.stars\.update\?\.\(now, frozen\)/, 'Dream motes must respect reduced motion');
+assert.match(sceneSource, /this\.altar\.setReading\?\.\(true\)/, 'Reading must dim the altar without removing it');
+
+for (let round = 0; round < 100; round += 1) {
+  const state = new TarotState(TAROT_CARDS);
+  for (let slot = 0; slot < 8; slot += 1) {
+    state.draw();
+  }
+  assert.equal(state.drawn.length, 8);
+  assert.equal(state.deck.length, 70);
+  assert.equal(new Set(state.drawn.map((card) => card.id)).size, 8, 'A draw may not duplicate cards');
+  assert.ok(state.drawn.every((card) => typeof card.reversed === 'boolean'), 'Reversed must be boolean');
+  assert.ok(state.drawn.every((_, index) => typeof state.readingAt(index).theme === 'string'), 'Drawn cards must resolve readings');
+}
+
+console.log('PASS: 78 cards, 8 domains, standard terminology, keyboard card access, modal focus, altar assets, viewport-fit nodes, outside-dismiss reading, safe extraction and return, result depth separation, unique draws, physical fan depth, inertial recycling, and visual-card replacement are present.');
