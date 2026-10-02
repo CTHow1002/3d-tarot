@@ -27,7 +27,33 @@ assert.equal(TAROT_CARDS.length, 78, 'Expected all 78 tarot cards');
 assert.equal(new Set(TAROT_CARDS.map((card) => card.id)).size, 78, 'Card ids must be unique');
 assert.equal(DOMAINS.length, 8, 'Expected eight reading domains');
 assert.ok(TAROT_CARDS.every((card) => card.readings.length === 8), 'Every card needs eight readings');
-assert.ok(TAROT_CARDS.every((card) => card.readings.every((reading) => reading.reversed && typeof reading.reversed.theme === 'string' && typeof reading.reversed.advice === 'string')), 'Every reading needs reversed data');
+const tendencyValues = new Set(['顺势', '平稳', '留意']);
+const hasReadingFields = (reading) => reading
+  && [reading.theme, reading.caution, reading.advice].every((value) => typeof value === 'string' && value.trim())
+  && tendencyValues.has(reading.tendency)
+  && Number.isInteger(reading.intensity)
+  && reading.intensity >= 1
+  && reading.intensity <= 5;
+assert.ok(TAROT_CARDS.every((card) => card.readings.every((reading) => hasReadingFields(reading) && hasReadingFields(reading.reversed))), 'Every reading needs complete upright and reversed content');
+
+const uprightAdvice = TAROT_CARDS.flatMap((card) => card.readings.map((reading) => reading.advice));
+const reversedAdvice = TAROT_CARDS.flatMap((card) => card.readings.map((reading) => reading.reversed.advice));
+assert.ok(new Set(uprightAdvice).size >= 500, 'Upright advice must retain substantial card and domain diversity');
+assert.ok(new Set(reversedAdvice).size >= 500, 'Reversed advice must retain substantial card and domain diversity');
+for (const card of TAROT_CARDS) {
+  assert.ok(new Set(card.readings.map((reading) => reading.advice)).size >= 6, `${card.name} needs at least six distinct upright advices`);
+  assert.ok(new Set(card.readings.map((reading) => reading.reversed.advice)).size >= 6, `${card.name} needs at least six distinct reversed advices`);
+}
+for (let domainIndex = 0; domainIndex < DOMAINS.length; domainIndex += 1) {
+  const advice = TAROT_CARDS.map((card) => card.readings[domainIndex].reversed.advice);
+  assert.ok(new Set(advice).size >= 60, `${DOMAINS[domainIndex].name} needs card-specific reversed advice`);
+}
+
+const cardsDataSource = readFileSync(resolve('src/data/cards.js'), 'utf8');
+assert.doesNotMatch(cardsDataSource, /DOMAIN_COPY|UPRIGHT_THEMES|REVERSED_THEMES|CAUTIONS|PLAIN_REPLACEMENTS|plainText|sentence\(|TAROT_CARDS\.forEach/, 'Reading copy must be stored directly in TAROT_CARDS');
+for (const phrase of ['可掌握的范围', '资源分散', '行动承诺', '推进节奏', '对应的阻力', '共同规范', '交换与边界', '可持续的恢复安排', '求证', '悬置', '耗损', '脆弱环节', '检视', '可交付范围', '依可靠信息行动', '复查节点', '自主选择', '风险可控', '试错金额', '返程方式', '沉没成本', '反位']) {
+  assert.ok(!cardsDataSource.includes(phrase), `Plain-language copy must not contain ${phrase}`);
+}
 
 const cardsDir = resolve('public/cards');
 const assets = new Set(readdirSync(cardsDir).filter((file) => file.endsWith('.webp')).map((file) => file.slice(0, -5)));
