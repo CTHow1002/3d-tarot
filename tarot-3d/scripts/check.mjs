@@ -36,21 +36,92 @@ const hasReadingFields = (reading) => reading
   && reading.intensity <= 5;
 assert.ok(TAROT_CARDS.every((card) => card.readings.every((reading) => hasReadingFields(reading) && hasReadingFields(reading.reversed))), 'Every reading needs complete upright and reversed content');
 
+const readingVersions = (reading) => [reading, reading.reversed];
+const chineseLength = (value) => [...value].filter((character) => /[\u4e00-\u9fff]/.test(character)).length;
+const compactOpening = (value) => value.replace(/[，。；、\s]/g, '');
+const sharesLongOpening = (left, right) => {
+  const a = compactOpening(left);
+  const b = compactOpening(right);
+  let length = 0;
+  while (length < a.length && length < b.length && a[length] === b[length]) length += 1;
+  return length >= 8;
+};
+const domainPrefix = /^(?:在近期整体|在身心状态|在金钱财务|在工作事业|在出行安排|在家庭生活|在人际关系|在恋爱感情)上[，。]/;
+const healthSafety = {
+  'major-13-death': /现实死亡预示|身体预示/,
+  'major-15-devil': /成瘾诊断|习惯怎样影响生活/,
+  'major-16-tower': /疾病、事故或灾难预示|现实中的压力/,
+  'major-18-moon': /牌面判断身体状况|担忧当成诊断/
+};
+for (const card of TAROT_CARDS) {
+  for (const [domainIndex, reading] of card.readings.entries()) {
+    for (const version of readingVersions(reading)) {
+      assert.doesNotMatch(version.theme, domainPrefix, `${card.name} theme must not repeat the domain label`);
+      assert.doesNotMatch(version.caution, domainPrefix, `${card.name} caution must not repeat the domain label`);
+      assert.doesNotMatch(version.advice, domainPrefix, `${card.name} advice must not repeat the domain label`);
+      assert.ok(chineseLength(version.theme) <= 40, `${card.name} theme should remain concise`);
+      assert.ok(chineseLength(version.caution) <= 40, `${card.name} caution should remain concise`);
+      assert.ok(chineseLength(version.advice) <= (domainIndex === 1 ? 52 : 34), `${card.name} advice should remain concise`);
+      if (domainIndex === 1 && healthSafety[card.id]) {
+        assert.match(version.advice, healthSafety[card.id], `${card.name} health advice must keep its safety framing`);
+      }
+      const fields = [version.theme, version.caution, version.advice];
+      for (let first = 0; first < fields.length; first += 1) {
+        for (let second = first + 1; second < fields.length; second += 1) {
+          assert.ok(!sharesLongOpening(fields[first], fields[second]), `${card.name} reading sections must not repeat a long opening`);
+        }
+      }
+    }
+  }
+}
+
 const uprightAdvice = TAROT_CARDS.flatMap((card) => card.readings.map((reading) => reading.advice));
 const reversedAdvice = TAROT_CARDS.flatMap((card) => card.readings.map((reading) => reading.reversed.advice));
+const healthAdvice = TAROT_CARDS.flatMap((card) => [card.readings[1].advice, card.readings[1].reversed.advice]);
 assert.ok(new Set(uprightAdvice).size >= 500, 'Upright advice must retain substantial card and domain diversity');
 assert.ok(new Set(reversedAdvice).size >= 500, 'Reversed advice must retain substantial card and domain diversity');
+assert.ok(healthAdvice.filter((value) => /医生|专业人士|专业帮助|专业支持|按现实症状求助/.test(value)).length < healthAdvice.length / 2, 'Health guidance should not add professional-care wording to every card');
 for (const card of TAROT_CARDS) {
   assert.ok(new Set(card.readings.map((reading) => reading.advice)).size >= 6, `${card.name} needs at least six distinct upright advices`);
   assert.ok(new Set(card.readings.map((reading) => reading.reversed.advice)).size >= 6, `${card.name} needs at least six distinct reversed advices`);
+  for (const field of ['theme', 'caution']) {
+    assert.ok(new Set(card.readings.map((reading) => reading[field])).size >= 6, `${card.name} needs at least six distinct upright ${field}s`);
+    assert.ok(new Set(card.readings.map((reading) => reading.reversed[field])).size >= 6, `${card.name} needs at least six distinct reversed ${field}s`);
+  }
 }
 for (let domainIndex = 0; domainIndex < DOMAINS.length; domainIndex += 1) {
   const advice = TAROT_CARDS.map((card) => card.readings[domainIndex].reversed.advice);
   assert.ok(new Set(advice).size >= 60, `${DOMAINS[domainIndex].name} needs card-specific reversed advice`);
 }
+const advicePairs = TAROT_CARDS.flatMap((card) => card.readings);
+assert.ok(advicePairs.filter((reading) => reading.advice !== reading.reversed.advice).length / advicePairs.length >= 0.8, 'Most upright and reversed advice must differ');
 
 const cardsDataSource = readFileSync(resolve('src/data/cards.js'), 'utf8');
+const uiSource = readFileSync(resolve('src/ui/ui.js'), 'utf8');
+assert.match(cardsDataSource, /^export const TAROT_CARDS = \[/, 'Reading copy must remain literal TAROT_CARDS data');
 assert.doesNotMatch(cardsDataSource, /DOMAIN_COPY|UPRIGHT_THEMES|REVERSED_THEMES|CAUTIONS|PLAIN_REPLACEMENTS|plainText|sentence\(|TAROT_CARDS\.forEach/, 'Reading copy must be stored directly in TAROT_CARDS');
+for (const phrase of ['眼前重点正在浮现', '作息和精力值得照顾', '收入、支出要看清', '任务与合作要理顺', '时间和路线要核对', '需要和分工要说开', '想法与界线要说清', '感受和期待要确认', '眼前重点还没理清', '金额和条件还没定', '任务和期限还没对齐', '时间和路线还没定下', '需要和分工还没说开', '彼此想法还没对上', '感受和期待还不清楚', '先别急着替眼前的事下结论', '先把休息和吃饭都放在前面', '先把金额、条件和期限看清再决定', '先把任务、责任和期限都对齐', '先核对时间、路线和备用安排', '先把真正需要和分工说开再决定', '先问清彼此到底在想什么再回应', '先把感受、期待和界线说清再决定']) {
+  assert.ok(!cardsDataSource.includes(phrase), `Reading copy must not retain the global template: ${phrase}`);
+}
+const clauses = new Map();
+for (const card of TAROT_CARDS) {
+  for (const reading of card.readings) {
+    for (const version of readingVersions(reading)) {
+      for (const value of [version.theme, version.caution, version.advice]) {
+        for (const clause of value.split(/[。；！？]/).map((part) => part.replace(/[，、\s]/g, ''))) {
+          if (chineseLength(clause) >= 6) clauses.set(clause, (clauses.get(clause) ?? 0) + 1);
+        }
+      }
+    }
+  }
+}
+for (const [clause, count] of clauses) {
+  assert.ok(count <= 8, `Reading clause repeats too often (${count}): ${clause}`);
+}
+assert.deepEqual([...uiSource.matchAll(/<h3>([^<]+)<\/h3>/g)].map((match) => match[1]), ['此刻', '留意', '下一步'], 'Reading headings must stay concise and ordered');
+for (const heading of ['此刻的讯息', '值得留意', '给你的小提示']) {
+  assert.ok(!uiSource.includes(heading), `Reading UI must not use ${heading}`);
+}
 for (const phrase of ['可掌握的范围', '资源分散', '行动承诺', '推进节奏', '对应的阻力', '共同规范', '交换与边界', '可持续的恢复安排', '求证', '悬置', '耗损', '脆弱环节', '检视', '可交付范围', '依可靠信息行动', '复查节点', '自主选择', '风险可控', '试错金额', '返程方式', '沉没成本', '反位']) {
   assert.ok(!cardsDataSource.includes(phrase), `Plain-language copy must not contain ${phrase}`);
 }
@@ -219,7 +290,6 @@ else globalThis.window = originalWindow;
 const stateSource = readFileSync(resolve('src/state/tarot-state.js'), 'utf8');
 const sceneSource = readFileSync(resolve('src/scene/TarotScene.js'), 'utf8');
 const mainSource = readFileSync(resolve('src/main.js'), 'utf8');
-const uiSource = readFileSync(resolve('src/ui/ui.js'), 'utf8');
 const altarSource = readFileSync(resolve('src/scene/Altar.js'), 'utf8');
 const cardSource = readFileSync(resolve('src/cards/Card3D.js'), 'utf8');
 const deprecatedOrientation = '\u53cd\u4f4d';

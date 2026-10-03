@@ -61,9 +61,9 @@ export const createUI = (root, actions) => {
             </div>
           </div>
           <div class="reading-copy" tabindex="0" aria-label="牌卡解读内容">
-            <section><h3>此刻的讯息</h3><p data-reading-theme></p></section>
-            <section><h3>值得留意</h3><p data-reading-caution></p></section>
-            <section><h3>给你的小提示</h3><p data-reading-advice></p></section>
+            <section><h3>此刻</h3><p data-reading-theme></p></section>
+            <section><h3>留意</h3><p data-reading-caution></p></section>
+            <section><h3>下一步</h3><p data-reading-advice></p></section>
           </div>
         </section>
 
