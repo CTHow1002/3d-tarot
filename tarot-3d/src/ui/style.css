@@ -485,6 +485,10 @@ footer {
   .reading-copy p { font-size: 14px; line-height: 1.62; }
 }
 
+@media (max-width: 600px) and (max-height: 700px) {
+  .reset-result { bottom: calc(52px + env(safe-area-inset-bottom)); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
