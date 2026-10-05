@@ -98,6 +98,7 @@ assert.ok(advicePairs.filter((reading) => reading.advice !== reading.reversed.ad
 
 const cardsDataSource = readFileSync(resolve('src/data/cards.js'), 'utf8');
 const uiSource = readFileSync(resolve('src/ui/ui.js'), 'utf8');
+const indexHtml = readFileSync(resolve('index.html'), 'utf8');
 assert.match(cardsDataSource, /^export const TAROT_CARDS = \[/, 'Reading copy must remain literal TAROT_CARDS data');
 assert.doesNotMatch(cardsDataSource, /DOMAIN_COPY|UPRIGHT_THEMES|REVERSED_THEMES|CAUTIONS|PLAIN_REPLACEMENTS|plainText|sentence\(|TAROT_CARDS\.forEach/, 'Reading copy must be stored directly in TAROT_CARDS');
 for (const phrase of ['眼前重点正在浮现', '作息和精力值得照顾', '收入、支出要看清', '任务与合作要理顺', '时间和路线要核对', '需要和分工要说开', '想法与界线要说清', '感受和期待要确认', '眼前重点还没理清', '金额和条件还没定', '任务和期限还没对齐', '时间和路线还没定下', '需要和分工还没说开', '彼此想法还没对上', '感受和期待还不清楚', '先别急着替眼前的事下结论', '先把休息和吃饭都放在前面', '先把金额、条件和期限看清再决定', '先把任务、责任和期限都对齐', '先核对时间、路线和备用安排', '先把真正需要和分工说开再决定', '先问清彼此到底在想什么再回应', '先把感受、期待和界线说清再决定']) {
@@ -133,6 +134,45 @@ assert.ok(TAROT_CARDS.every((card) => assets.has(card.id)), 'Every tarot card ne
 for (const asset of ['altar-main.png', 'altar-node.png', 'altar-glint.png', 'altar-crescent.png']) {
   assert.ok(existsSync(resolve('public/altar', asset)), `Missing altar asset: ${asset}`);
 }
+
+const uniqueHtmlValue = (pattern, label) => {
+  const matches = [...indexHtml.matchAll(pattern)];
+  assert.equal(matches.length, 1, `${label} must appear exactly once`);
+  return matches[0][1];
+};
+const productTitle = '月间 · 3D 塔罗圣坛';
+const productDescription = '抽取八张塔罗牌，从八个角度安静地看看最近的生活。';
+const productionUrl = 'https://moonlit-tarot-3d-preview.netlify.app/';
+const socialImageUrl = `${productionUrl}social-preview.png`;
+assert.equal(uniqueHtmlValue(/<title>([^<]+)<\/title>/g, 'Title'), productTitle);
+assert.equal(uniqueHtmlValue(/<meta name="description" content="([^"]+)"\s*\/>/g, 'Description'), productDescription);
+assert.equal(uniqueHtmlValue(/<meta name="theme-color" content="([^"]+)"\s*\/>/g, 'Theme color'), '#120d1b');
+assert.equal(uniqueHtmlValue(/<link rel="canonical" href="([^"]+)"\s*\/>/g, 'Canonical URL'), productionUrl);
+assert.equal(uniqueHtmlValue(/<meta property="og:title" content="([^"]+)"\s*\/>/g, 'Open Graph title'), productTitle);
+assert.equal(uniqueHtmlValue(/<meta property="og:description" content="([^"]+)"\s*\/>/g, 'Open Graph description'), productDescription);
+assert.equal(uniqueHtmlValue(/<meta property="og:type" content="([^"]+)"\s*\/>/g, 'Open Graph type'), 'website');
+assert.equal(uniqueHtmlValue(/<meta property="og:url" content="([^"]+)"\s*\/>/g, 'Open Graph URL'), productionUrl);
+assert.equal(uniqueHtmlValue(/<meta property="og:image" content="([^"]+)"\s*\/>/g, 'Open Graph image'), socialImageUrl);
+assert.ok(uniqueHtmlValue(/<meta property="og:image:alt" content="([^"]+)"\s*\/>/g, 'Open Graph image alt'));
+assert.equal(uniqueHtmlValue(/<meta name="twitter:card" content="([^"]+)"\s*\/>/g, 'Twitter card'), 'summary_large_image');
+assert.equal(uniqueHtmlValue(/<meta name="twitter:title" content="([^"]+)"\s*\/>/g, 'Twitter title'), productTitle);
+assert.equal(uniqueHtmlValue(/<meta name="twitter:description" content="([^"]+)"\s*\/>/g, 'Twitter description'), productDescription);
+assert.equal(uniqueHtmlValue(/<meta name="twitter:image" content="([^"]+)"\s*\/>/g, 'Twitter image'), socialImageUrl);
+assert.equal(uniqueHtmlValue(/<link rel="icon" type="image\/png" sizes="32x32" href="([^"]+)"\s*\/>/g, 'Favicon'), '/favicon.png');
+assert.equal(uniqueHtmlValue(/<link rel="apple-touch-icon" sizes="180x180" href="([^"]+)"\s*\/>/g, 'Apple Touch Icon'), '/apple-touch-icon.png');
+assert.equal(uniqueHtmlValue(/<meta name="apple-mobile-web-app-title" content="([^"]+)"\s*\/>/g, 'Apple web app title'), '月间');
+
+const pngDimensions = (path) => {
+  const png = readFileSync(path);
+  assert.deepEqual(png.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), `Invalid PNG: ${path}`);
+  return [png.readUInt32BE(16), png.readUInt32BE(20)];
+};
+for (const asset of ['social-preview.png', 'favicon.png', 'apple-touch-icon.png']) {
+  assert.ok(existsSync(resolve('public', asset)), `Missing public metadata asset: ${asset}`);
+}
+assert.deepEqual(pngDimensions(resolve('public/social-preview.png')), [1200, 630], 'Social preview must be 1200×630');
+assert.deepEqual(pngDimensions(resolve('public/favicon.png')), [32, 32], 'Favicon must be 32×32');
+assert.deepEqual(pngDimensions(resolve('public/apple-touch-icon.png')), [180, 180], 'Apple Touch Icon must be 180×180');
 
 const layouts = [
   [390, 844, 'standard-mobile'],
