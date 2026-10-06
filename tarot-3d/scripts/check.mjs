@@ -22,6 +22,7 @@ import {
 } from '../src/scene/TarotScene.js';
 import { TarotState } from '../src/state/tarot-state.js';
 import { pause, tween } from '../src/animation/tween.js';
+import { setAnalyticsSink, track } from '../src/analytics/analytics.js';
 
 assert.equal(TAROT_CARDS.length, 78, 'Expected all 78 tarot cards');
 assert.equal(new Set(TAROT_CARDS.map((card) => card.id)).size, 78, 'Card ids must be unique');
@@ -99,6 +100,7 @@ assert.ok(advicePairs.filter((reading) => reading.advice !== reading.reversed.ad
 const cardsDataSource = readFileSync(resolve('src/data/cards.js'), 'utf8');
 const uiSource = readFileSync(resolve('src/ui/ui.js'), 'utf8');
 const indexHtml = readFileSync(resolve('index.html'), 'utf8');
+const analyticsSource = readFileSync(resolve('src/analytics/analytics.js'), 'utf8');
 assert.match(cardsDataSource, /^export const TAROT_CARDS = \[/, 'Reading copy must remain literal TAROT_CARDS data');
 assert.doesNotMatch(cardsDataSource, /DOMAIN_COPY|UPRIGHT_THEMES|REVERSED_THEMES|CAUTIONS|PLAIN_REPLACEMENTS|plainText|sentence\(|TAROT_CARDS\.forEach/, 'Reading copy must be stored directly in TAROT_CARDS');
 for (const phrase of ['眼前重点正在浮现', '作息和精力值得照顾', '收入、支出要看清', '任务与合作要理顺', '时间和路线要核对', '需要和分工要说开', '想法与界线要说清', '感受和期待要确认', '眼前重点还没理清', '金额和条件还没定', '任务和期限还没对齐', '时间和路线还没定下', '需要和分工还没说开', '彼此想法还没对上', '感受和期待还不清楚', '先别急着替眼前的事下结论', '先把休息和吃饭都放在前面', '先把金额、条件和期限看清再决定', '先把任务、责任和期限都对齐', '先核对时间、路线和备用安排', '先把真正需要和分工说开再决定', '先问清彼此到底在想什么再回应', '先把感受、期待和界线说清再决定']) {
@@ -350,6 +352,24 @@ assert.match(sceneSource, /animateReadingReturnPath\(card, slot, isCurrentLayout
 assert.match(mainSource, /Promise\.race\(\[opening, pause\(\d+\)\]\)/, 'Reading panel must enter during selected-card movement');
 assert.match(mainSource, /await opening;\s*ui\.enableReadingDismiss\(\)/, 'Reading dismiss actions must wait until card transition finishes');
 assert.match(mainSource, /Promise\.all\(\[ui\.hideReading\(\), scene\.closeReading\(\)\]\)/, 'Reading panel and card return must close together');
+for (const eventName of ['tarot_start', 'tarot_draw', 'tarot_complete', 'tarot_reading_open', 'tarot_reading_close', 'tarot_restart']) {
+  assert.ok(analyticsSource.includes(eventName), `Analytics must allow ${eventName}`);
+}
+assert.match(analyticsSource, /tarot_draw: Object\.freeze\(\{ position:/, 'Draw analytics may include position only');
+assert.match(analyticsSource, /tarot_reading_open: Object\.freeze\(\{ position:/, 'Reading analytics may include position only');
+assert.match(analyticsSource, /tarot_restart: Object\.freeze\(\{ stage:/, 'Restart analytics may include stage only');
+assert.doesNotMatch(analyticsSource, /document\.cookie|localStorage|sessionStorage|sendBeacon|XMLHttpRequest|\bfetch\s*\(/, 'Analytics must not store identifiers or send network requests');
+assert.doesNotMatch(analyticsSource, /\b(?:cardId|cardName|reversed|domain|readingText|orientation|ipAddress|fingerprint|userId|email|phone|location|timestamp)\b/i, 'Analytics payload schema must not include private reading or identity data');
+assert.match(mainSource, /await scene\.drawCard\(card, positionIndex, selectedCard\);\s*track\('tarot_draw', \{ position: positionIndex \+ 1\s*\}\)/, 'Draw analytics must follow successful card landing');
+assert.match(mainSource, /ui\.showResults\(state\.drawn\);\s*track\('tarot_complete'\)/, 'Completion analytics must follow results becoming available');
+assert.match(mainSource, /ui\.enableReadingDismiss\(\);\s*track\('tarot_reading_open', \{ position: index \+ 1\s*\}\)/, 'Reading analytics must follow a usable reading');
+assert.match(mainSource, /ui\.finishReadingClose\(\);\s*busy = false;\s*\}\s*track\('tarot_reading_close'\)/, 'Close analytics must follow a successful close');
+assert.match(mainSource, /ui\.showHome\(\);\s*track\('tarot_restart', \{ stage \}\)/, 'Restart analytics must follow an accepted reset');
+assert.match(mainSource, /async function startReading\(\) \{\s*if \(busy\) return;/, 'Start analytics must respect the busy guard');
+assert.match(mainSource, /async function drawCard\(selectedCard\) \{\s*if \(busy \|\| state\.drawn\.length >= 8 \|\| scene\.stage !== 'draw'\) return;/, 'Draw analytics must respect busy, count, and stage guards');
+assert.match(mainSource, /async function openReading\(index\) \{\s*if \(busy \|\| scene\.stage !== 'results'\) return;/, 'Reading-open analytics must respect the busy and stage guards');
+assert.match(mainSource, /async function closeReading\(\) \{\s*if \(busy \|\| scene\.stage !== 'reading'\) return;/, 'Reading-close analytics must respect the busy and stage guards');
+assert.match(mainSource, /if \(busy\) return;\s*const stage = scene\.stage === 'draw' \? 'draw'/, 'Restart analytics must honor the busy and valid-stage guards');
 assert.match(uiSource, /reading-dismiss-layer" data-action="close-reading"/, 'Reading needs a dedicated outside-dismiss layer');
 assert.match(uiSource, /event\.key === 'Escape' && readingCanDismiss/, 'Reading Escape close must wait for the open transition');
 assert.match(uiSource, /button\.dataset\.action !== 'close-reading' \|\| readingCanDismiss/, 'Reading dismiss buttons must ignore duplicate or premature closes');
@@ -395,4 +415,31 @@ for (let round = 0; round < 100; round += 1) {
   assert.ok(state.drawn.every((_, index) => typeof state.readingAt(index).theme === 'string'), 'Drawn cards must resolve readings');
 }
 
-console.log('PASS: 78 cards, 8 domains, standard terminology, keyboard card access, modal focus, altar assets, viewport-fit nodes, outside-dismiss reading, safe extraction and return, result depth separation, unique draws, physical fan depth, inertial recycling, and visual-card replacement are present.');
+const analyticsEvents = [];
+setAnalyticsSink((eventName, properties) => analyticsEvents.push([eventName, properties]));
+track('tarot_start', { card: 'ignored', domain: 'ignored' });
+for (let position = 1; position <= 8; position += 1) {
+  track('tarot_draw', { position, cardId: 'ignored', reversed: true, domain: 'ignored' });
+}
+track('tarot_complete', { readingText: 'ignored' });
+track('tarot_reading_open', { position: 4, cardName: 'ignored', orientation: 'ignored' });
+track('tarot_reading_close', { domain: 'ignored' });
+track('tarot_restart', { stage: 'results', userId: 'ignored' });
+track('unknown_event', { position: 1 });
+track('toString', { position: 1 });
+track('tarot_draw', { position: 9 });
+assert.deepEqual(analyticsEvents, [
+  ['tarot_start', {}],
+  ...Array.from({ length: 8 }, (_, index) => ['tarot_draw', { position: index + 1 }]),
+  ['tarot_complete', {}],
+  ['tarot_reading_open', { position: 4 }],
+  ['tarot_reading_close', {}],
+  ['tarot_restart', { stage: 'results' }]
+], 'Analytics must emit canonical events with only allow-listed properties');
+setAnalyticsSink(() => { throw new Error('test sink failure'); });
+assert.doesNotThrow(() => track('tarot_start'), 'A throwing analytics sink must not break the app');
+setAnalyticsSink(() => Promise.reject(new Error('test async sink failure')));
+assert.doesNotThrow(() => track('tarot_complete'), 'A rejected analytics sink must not break the app');
+setAnalyticsSink(null);
+
+console.log('PASS: 78 cards, 8 domains, standard terminology, keyboard card access, modal focus, altar assets, viewport-fit nodes, outside-dismiss reading, safe extraction and return, result depth separation, unique draws, physical fan depth, inertial recycling, visual-card replacement, and privacy-safe analytics are present.');
