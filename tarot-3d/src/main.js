@@ -4,7 +4,6 @@ import { TarotState } from './state/tarot-state.js';
 import { TarotScene } from './scene/TarotScene.js';
 import { createUI } from './ui/ui.js';
 import { pause } from './animation/tween.js';
-import { track } from './analytics/analytics.js';
 
 const root = document.querySelector('#app');
 let state;
@@ -47,7 +46,6 @@ async function startReading() {
     scene.toHomeDeck();
     await scene.beginShuffle();
     ui.showDraw(currentState.drawn.length, currentState.deck.length);
-    track('tarot_start');
   } finally {
     busy = false;
   }
@@ -62,13 +60,11 @@ async function drawCard(selectedCard) {
   ui.setStatus(`正在翻开第 ${positionIndex + 1} 张牌：${domain.name}。`);
   try {
     await scene.drawCard(card, positionIndex, selectedCard);
-    track('tarot_draw', { position: positionIndex + 1 });
     ui.updateDraw(state.drawn.length, state.deck.length);
     if (state.drawn.length === 8) {
       await scene.completeSpread();
       await scene.toResults();
       ui.showResults(state.drawn);
-      track('tarot_complete');
     } else {
       ui.setStatus('第 ' + state.drawn.length + ' 张已落位。接下来：' + DOMAINS[state.drawn.length].name + '。');
     }
@@ -88,7 +84,6 @@ async function openReading(index) {
     ui.showReading(card, DOMAINS[index], state.readingAt(index));
     await opening;
     ui.enableReadingDismiss();
-    track('tarot_reading_open', { position: index + 1 });
   } catch (error) {
     ui.cancelReading();
     throw error;
@@ -106,15 +101,11 @@ async function closeReading() {
     ui.finishReadingClose();
     busy = false;
   }
-  track('tarot_reading_close');
 }
 
 function resetReading() {
   if (busy) return;
-  const stage = scene.stage === 'draw' ? 'draw' : scene.stage === 'results' || scene.stage === 'reading' ? 'results' : null;
-  if (!stage) return;
   state?.reset();
   scene.reset();
   ui.showHome();
-  track('tarot_restart', { stage });
 }
