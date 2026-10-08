@@ -12,8 +12,6 @@ let busy = false;
 
 const ui = createUI(root, {
   start: () => startReading(),
-  previous: () => scene?.nudgeFan(-1),
-  next: () => scene?.nudgeFan(1),
   'draw-current': () => drawCard(scene?.currentDrawCard()),
   'read-result': (index) => openReading(Number(index)),
   reset: () => resetReading(),

@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { TAROT_CARDS } from '../src/data/cards.js';
 import { DOMAINS } from '../src/data/domains.js';
-import { altarNodePose } from '../src/scene/Altar.js';
+import { altarNodePose, NODE_VISUALS } from '../src/scene/Altar.js';
 import {
   advanceFanInertia,
   drawStageSpreadPose,
@@ -98,6 +98,7 @@ assert.ok(advicePairs.filter((reading) => reading.advice !== reading.reversed.ad
 
 const cardsDataSource = readFileSync(resolve('src/data/cards.js'), 'utf8');
 const uiSource = readFileSync(resolve('src/ui/ui.js'), 'utf8');
+const styleSource = readFileSync(resolve('src/ui/style.css'), 'utf8');
 const indexHtml = readFileSync(resolve('index.html'), 'utf8');
 assert.match(cardsDataSource, /^export const TAROT_CARDS = \[/, 'Reading copy must remain literal TAROT_CARDS data');
 assert.doesNotMatch(cardsDataSource, /DOMAIN_COPY|UPRIGHT_THEMES|REVERSED_THEMES|CAUTIONS|PLAIN_REPLACEMENTS|plainText|sentence\(|TAROT_CARDS\.forEach/, 'Reading copy must be stored directly in TAROT_CARDS');
@@ -182,7 +183,7 @@ const layouts = [
 ].map(([width, height, name]) => {
   const layout = getLayoutProfile(width, height);
   assert.equal(layout.name, name, `Expected ${name} layout at ${width}x${height}`);
-  for (const key of ['fanY', 'fanStepX', 'fanLayerStep', 'revealY', 'revealZ', 'revealScale', 'stagingTopY', 'stagingBottomY', 'stagingStepX', 'stagingScale', 'resultRadiusX', 'resultRadiusY', 'nodeDrawRadiusX', 'nodeDrawRadiusY', 'nodeDrawCenterY', 'nodeOutsetVertical', 'nodeOutsetDiagonal', 'nodeOutsetHorizontal', 'nodeScale', 'resultBaseZ', 'resultDepth', 'resultCameraZ', 'resultTargetY', 'readingTargetY', 'readingRetreatZ', 'readingRetreatScale', 'readingSafePlaneGap', 'readingY', 'readingZ', 'readingScale']) {
+  for (const key of ['fanY', 'fanStepX', 'fanLayerStep', 'revealY', 'revealZ', 'revealScale', 'stagingTopY', 'stagingBottomY', 'stagingStepX', 'stagingScale', 'resultRadiusX', 'resultRadiusY', 'nodeDrawRadiusX', 'nodeDrawRadiusY', 'nodeDrawCenterY', 'nodeOutsetVertical', 'nodeOutsetDiagonal', 'nodeOutsetHorizontal', 'nodeScale', 'resultBaseZ', 'resultDepth', 'resultCameraZ', 'resultTargetY', 'readingTargetY', 'readingCameraZ', 'readingFov', 'readingRetreatZ', 'readingRetreatScale', 'readingSafePlaneGap', 'readingY', 'readingZ', 'readingScale']) {
     assert.ok(Number.isFinite(layout[key]), `${name} layout needs ${key}`);
   }
   return layout;
@@ -202,6 +203,20 @@ assert.notDeepEqual(drawTop.position, resultTop.position, 'Staging and result sp
 assert.ok(reveal.position.y < drawBottom.position.y && reveal.position.z > drawBottom.position.z, 'Reveal must sit in front of and below the staging layout');
 assert.ok(readingForeground.position.z > resultTop.position.z, 'Reading card must move toward the foreground');
 assert.notDeepEqual(readingPose(compactLayout).position, readingPose(wideMobileLayout).position, 'Reading card pose must adapt between mobile layouts');
+assert.ok(compactLayout.readingScale >= 1.25 && mobileLayout.readingScale >= 1.4, 'Mobile reading cards must fill the upper visual zone');
+assert.ok(mobileLayout.readingCameraZ < mobileLayout.resultCameraZ && compactLayout.readingCameraZ < compactLayout.resultCameraZ, 'Mobile Reading must move the camera closer to the selected card');
+assert.ok(compactLayout.revealScale > 1 && mobileLayout.revealScale > 1.1, 'Mobile reveal cards must be large enough to appreciate');
+assert.ok(compactLayout.stagingScale > 0.38 && mobileLayout.stagingScale > 0.42, 'Mobile staging cards must remain appreciable');
+assert.ok(compactLayout.resultSpreadScale > 0.9 && mobileLayout.resultSpreadScale > 0.95, 'Mobile result cards must be larger than the prior compact layout');
+for (const [layout, width, height] of [[compactLayout, 375, 667], [mobileLayout, 390, 844], [wideMobileLayout, 430, 932]]) {
+  const viewHeight = 2 * (layout.readingCameraZ - layout.readingZ) * Math.tan(layout.readingFov * Math.PI / 360);
+  const cardHeight = layout.readingScale * 1.17 / viewHeight;
+  const cardCenter = 0.5 - (layout.readingY - layout.readingTargetY) / viewHeight;
+  const cardWidth = 0.78 * layout.readingScale / (viewHeight * width / height);
+  assert.ok(cardHeight >= 0.38 && cardHeight < 0.43, `${layout.name} Reading artwork must fill but fit above the sheet`);
+  assert.ok(cardCenter - cardHeight / 2 > 0 && cardCenter + cardHeight / 2 < 0.43, `${layout.name} Reading artwork must remain within its upper visual zone`);
+  assert.ok(cardWidth < 1, `${layout.name} Reading artwork must fit within the viewport width`);
+}
 for (const layout of layouts) {
   const anchors = Array.from({ length: 8 }, (_, index) => altarNodePose(index, layout));
   assert.equal(anchors.length, 8, `${layout.name} needs eight altar anchors`);
@@ -351,6 +366,8 @@ assert.match(mainSource, /Promise\.race\(\[opening, pause\(\d+\)\]\)/, 'Reading 
 assert.match(mainSource, /await opening;\s*ui\.enableReadingDismiss\(\)/, 'Reading dismiss actions must wait until card transition finishes');
 assert.match(mainSource, /Promise\.all\(\[ui\.hideReading\(\), scene\.closeReading\(\)\]\)/, 'Reading panel and card return must close together');
 assert.match(uiSource, /reading-dismiss-layer" data-action="close-reading"/, 'Reading needs a dedicated outside-dismiss layer');
+assert.match(styleSource, /\.tarot-shell\.is-reading::after\s*\{\s*opacity:\s*0\s*;?\s*\}/, 'Reading must not place a heavy global veil over the selected card');
+assert.match(styleSource, /\.tarot-shell\.is-reading\s+\.top-bar\s*\{[^}]*visibility:\s*hidden/, 'Reading must hide the top bar without removing its layout space');
 assert.match(uiSource, /event\.key === 'Escape' && readingCanDismiss/, 'Reading Escape close must wait for the open transition');
 assert.match(uiSource, /button\.dataset\.action !== 'close-reading' \|\| readingCanDismiss/, 'Reading dismiss buttons must ignore duplicate or premature closes');
 assert.match(uiSource, /role="dialog" aria-modal="true"/, 'Reading panel must remain a modal dialog');
@@ -360,6 +377,8 @@ assert.match(altarSource, /altar-main/, 'Celestial altar needs the supplied main
 assert.match(altarSource, /altar-node/, 'Celestial altar needs supplied jewel nodes');
 assert.doesNotMatch(altarSource, /makeOrnamentTexture|EllipseCurve/, 'Celestial altar must not retain procedural ornament geometry');
 assert.match(altarSource, /NODE_VISUALS/, 'Altar nodes need dormant, active, and filled visual targets');
+assert.ok(NODE_VISUALS.filled.opacity > NODE_VISUALS.dormant.opacity && NODE_VISUALS.filled.glow > NODE_VISUALS.dormant.glow, 'Filled altar nodes must remain brighter than dormant nodes');
+assert.ok(NODE_VISUALS.active.opacity > NODE_VISUALS.preglow.opacity && NODE_VISUALS.active.glow > NODE_VISUALS.preglow.glow, 'Active altar nodes must brighten after ignition');
 assert.match(altarSource, /awakenNode/, 'Altar nodes need an awakening transition');
 assert.match(altarSource, /setNodeFrame/, 'Altar nodes need draw and result spatial frames');
 assert.match(sceneSource, /this\.altar\.setNodeFrame\?\.\('result', 780\)/, 'Altar nodes must expand with the result transition');
@@ -371,6 +390,10 @@ assert.match(sceneSource, /await createAltar\(this\.textures\)/, 'Altar assets m
 assert.match(altarSource, /setReading/, 'Celestial altar must support a dimmed reading state');
 assert.match(altarSource, /if \(frozen\) return;/, 'Celestial altar motion must pause for reduced motion');
 assert.match(uiSource, /data-action="draw-current"/, 'Keyboard users need a way to select the center draw card');
+assert.doesNotMatch(uiSource, /data-action="(?:previous|next)"|draw-controls|round-button/, 'Draw UI must not show previous/next arrow controls');
+assert.match(uiSource, /data-progress[\s\S]*data-deck-count/, 'Deck count must sit with the draw progress header');
+assert.match(uiSource, /'★'\.repeat\(reading\.intensity\)\s*\+\s*'☆'\.repeat\(5 - reading\.intensity\)/, 'Reading intensity must render exactly five stars');
+assert.match(uiSource, /信息强度 \$\{reading\.intensity\} 星，共五颗/, 'Reading intensity stars need an accessible description');
 assert.match(uiSource, /data-result-actions/, 'Keyboard users need controls for each result card');
 assert.match(uiSource, /button\.dataset\.action = 'read-result'/, 'Result reading controls must open their matching cards');
 assert.match(mainSource, /'draw-current': \(\) => drawCard\(scene\?\.currentDrawCard\(\)\)/, 'Draw selection must use the same guarded draw flow');

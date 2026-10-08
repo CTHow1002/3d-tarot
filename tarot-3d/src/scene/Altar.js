@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import { easing } from '../animation/easing.js';
 
 const DOMAIN_STEP = Math.PI * 2 / 8;
-const NODE_VISUALS = Object.freeze({
-  dormant: { opacity: 0.085, scale: 0.93, glow: 0 },
-  preglow: { opacity: 0.23, scale: 0.96, glow: 0.16 },
-  active: { opacity: 0.63, scale: 1.035, glow: 0.34 },
-  filled: { opacity: 0.39, scale: 1, glow: 0.08 }
+export const NODE_VISUALS = Object.freeze({
+  dormant: { opacity: 0.12, scale: 0.93, glow: 0.03 },
+  preglow: { opacity: 0.43, scale: 1, glow: 0.43 },
+  active: { opacity: 0.76, scale: 1.08, glow: 0.72 },
+  filled: { opacity: 0.78, scale: 1.08, glow: 0.70 }
 });
 
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -145,20 +145,20 @@ export const createAltar = async (textures) => {
   const applyNodeVisual = (node) => {
     const { visual, state, width, height, layoutScale } = node.userData;
     const completionResponse = state === 'filled' ? completion : 0;
-    const scale = visual.scale * layoutScale * (1 + completionResponse * 0.018);
-    const brightness = 0.6 + visual.glow * 0.4;
+    const scale = visual.scale * layoutScale * (1 + completionResponse * 0.05);
+    const brightness = 0.78 + visual.glow * 0.22 + completionResponse * 0.06;
     node.material.color.setScalar(brightness);
-    node.material.opacity = (visual.opacity + completionResponse * 0.015) * (1 - readingMix * 0.5);
+    node.material.opacity = (visual.opacity + completionResponse * 0.075) * (1 - readingMix * 0.62);
     node.scale.set(width * scale, height * scale, 1);
   };
 
   const applyAtmosphere = () => {
-    const normalMainOpacity = 0.25 + completion * 0.04;
-    mainMaterial.opacity = THREE.MathUtils.lerp(normalMainOpacity, 0.16, readingMix);
-    crescent.material.opacity = THREE.MathUtils.lerp(0.08 + completion * 0.01, 0.05, readingMix);
-    pearlMaterial.emissiveIntensity = THREE.MathUtils.lerp(0.3 + completion * 0.05, 0.18, readingMix);
+    const normalMainOpacity = 0.28 + completion * 0.14;
+    mainMaterial.opacity = THREE.MathUtils.lerp(normalMainOpacity, 0.15, readingMix);
+    crescent.material.opacity = THREE.MathUtils.lerp(0.08 + completion * 0.04, 0.05, readingMix);
+    pearlMaterial.emissiveIntensity = THREE.MathUtils.lerp(0.3 + completion * 0.18, 0.18, readingMix);
     glints.forEach(({ material, baseOpacity }) => {
-      material.userData.baseOpacity = THREE.MathUtils.lerp(baseOpacity + completion * 0.006, baseOpacity * 0.45, readingMix);
+      material.userData.baseOpacity = THREE.MathUtils.lerp(baseOpacity + completion * 0.02, baseOpacity * 0.45, readingMix);
       material.opacity = material.userData.baseOpacity;
     });
   };
@@ -187,7 +187,7 @@ export const createAltar = async (textures) => {
     const target = NODE_VISUALS[state];
     if (!target) return;
     node.userData.state = state;
-    transitionNode(node, target, state === 'dormant' ? 160 : 180);
+    transitionNode(node, target, state === 'dormant' ? 160 : state === 'filled' ? 240 : 180);
   };
 
   const awakenNode = (index) => {

@@ -31,11 +31,9 @@ export const createUI = (root, actions) => {
             <h2 data-draw-question>最近的生活，有什么值得看见？</h2>
             <p class="draw-note" data-draw-note>左右滑动牌扇，点击任意可见牌选择</p>
           </div>
-          <div class="progress" aria-label="抽牌进度" data-progress></div>
-          <div class="draw-controls" aria-label="浏览牌组">
-            <button class="round-button" type="button" data-action="previous" aria-label="浏览上一张牌">‹</button>
-            <span class="deck-count" data-deck-count>78 张牌堆</span>
-            <button class="round-button" type="button" data-action="next" aria-label="浏览下一张牌">›</button>
+          <div class="draw-status">
+            <div class="progress" aria-label="抽牌进度" data-progress></div>
+            <span class="deck-count" data-deck-count>牌堆剩余 78 张</span>
           </div>
           <button class="secondary-reset-button reset-draw" type="button" data-action="reset">重新开始</button>
         </section>
@@ -57,7 +55,10 @@ export const createUI = (root, actions) => {
             <p class="reading-en" data-reading-en></p>
             <div class="reading-summary">
               <p class="orientation" data-reading-orientation></p>
-              <p class="tendency" data-reading-tendency></p>
+              <p class="tendency" data-reading-tendency>
+                <span data-reading-tendency-label></span>
+                <span class="intensity-stars" data-reading-intensity role="img"></span>
+              </p>
             </div>
           </div>
           <div class="reading-copy" tabindex="0" aria-label="牌卡解读内容">
@@ -150,7 +151,10 @@ export const createUI = (root, actions) => {
     panels.reading.querySelector('[data-reading-name]').textContent = card.name;
     panels.reading.querySelector('[data-reading-en]').textContent = card.en;
     panels.reading.querySelector('[data-reading-orientation]').textContent = card.reversed ? '逆位' : '正位';
-    panels.reading.querySelector('[data-reading-tendency]').textContent = `整体倾向 · ${reading.tendency}`;
+    const intensityStars = panels.reading.querySelector('[data-reading-intensity]');
+    intensityStars.textContent = '★'.repeat(reading.intensity) + '☆'.repeat(5 - reading.intensity);
+    intensityStars.setAttribute('aria-label', `信息强度 ${reading.intensity} 星，共五颗`);
+    panels.reading.querySelector('[data-reading-tendency-label]').textContent = reading.tendency;
     panels.reading.querySelector('[data-reading-theme]').textContent = reading.theme;
     panels.reading.querySelector('[data-reading-caution]').textContent = reading.caution;
     panels.reading.querySelector('[data-reading-advice]').textContent = reading.advice;

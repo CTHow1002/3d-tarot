@@ -56,30 +56,32 @@ export const getLayoutProfile = (width, height) => {
       revealX: 0,
       revealY: -0.34,
       revealZ: 0.94,
-      revealScale: 0.94,
+      revealScale: 1.12,
       stagingTopY: 0.64,
       stagingBottomY: 0.1,
       stagingStepX: 0.36,
-      stagingScale: 0.29,
+      stagingScale: 0.41,
       stagingZ: -0.03,
       resultRadiusX: 1.06,
       resultRadiusY: 0.78,
       nodeDrawRadiusX: 0.66,
       nodeDrawRadiusY: 0.58,
       nodeDrawCenterY: 0.46,
-      resultSpreadScale: 0.84,
+      resultSpreadScale: 0.98,
       nodeOutsetVertical: 0.52,
       nodeOutsetDiagonal: 0.62,
       nodeOutsetHorizontal: 0.34,
       nodeScale: 0.84,
       resultBaseZ: -0.14,
-      resultDepth: 0.18,
-      readingRetreatZ: 0.22,
-      readingRetreatScale: 0.978,
+      resultDepth: 0.34,
+      readingRetreatZ: 0.34,
+      readingRetreatScale: 0.9,
       readingSafePlaneGap: 0.34,
-      readingY: 1.34,
+      readingCameraZ: 5.4,
+      readingFov: 48,
+      readingY: 1.14,
       readingZ: 1.14,
-      readingScale: 1.1
+      readingScale: 1.3
     };
   }
 
@@ -109,30 +111,32 @@ export const getLayoutProfile = (width, height) => {
       revealX: 0,
       revealY: -0.34,
       revealZ: 0.94,
-      revealScale: 1.07,
+      revealScale: 1.22,
       stagingTopY: 0.76,
       stagingBottomY: 0.2,
       stagingStepX: 0.43,
-      stagingScale: 0.34,
+      stagingScale: 0.45,
       stagingZ: -0.03,
       resultRadiusX: 1.06,
       resultRadiusY: 0.86,
       nodeDrawRadiusX: 0.76,
       nodeDrawRadiusY: 0.65,
       nodeDrawCenterY: 0.55,
-      resultSpreadScale: 0.9,
+      resultSpreadScale: 1.02,
       nodeOutsetVertical: 0.6,
       nodeOutsetDiagonal: 0.72,
       nodeOutsetHorizontal: 0.4,
       nodeScale: 0.92,
       resultBaseZ: -0.14,
-      resultDepth: 0.2,
-      readingRetreatZ: 0.22,
-      readingRetreatScale: 0.978,
+      resultDepth: 0.34,
+      readingRetreatZ: 0.36,
+      readingRetreatScale: 0.9,
       readingSafePlaneGap: 0.34,
-      readingY: 1.52,
+      readingCameraZ: 5.8,
+      readingFov: 48,
+      readingY: 1.23,
       readingZ: 1.24,
-      readingScale: 1.38
+      readingScale: 1.42
     };
   }
 
@@ -180,8 +184,10 @@ export const getLayoutProfile = (width, height) => {
     resultBaseZ: -0.14,
     resultDepth: 0.22,
     readingRetreatZ: 0.24,
-    readingRetreatScale: 0.978,
+    readingRetreatScale: 0.92,
     readingSafePlaneGap: 0.36,
+    readingCameraZ: 7.45,
+    readingFov: 44,
     readingY: 1.14,
     readingZ: 1.24,
     readingScale: 1.54
@@ -425,7 +431,7 @@ export class TarotScene {
       return { position: new THREE.Vector3(0, 0.06, layout.drawCameraZ), target: new THREE.Vector3(0, 0.14, 0), fov: layout.drawFov };
     }
     if (stage === 'reading') {
-      return { position: new THREE.Vector3(0, 0.05, layout.resultCameraZ), target: new THREE.Vector3(0, layout.readingTargetY, 0), fov: layout.resultFov };
+      return { position: new THREE.Vector3(0, 0.05, layout.readingCameraZ), target: new THREE.Vector3(0, layout.readingTargetY, 0), fov: layout.readingFov };
     }
     if (stage === 'results' || stage === 'completing') {
       return { position: new THREE.Vector3(0, 0.05, layout.resultCameraZ), target: new THREE.Vector3(0, layout.resultTargetY, 0), fov: layout.resultFov };
@@ -856,8 +862,8 @@ export class TarotScene {
   }
 
   async settleCard(card, target, isCurrent = () => true) {
-    const enlarged = { ...target, scale: target.scale.clone().multiplyScalar(1.01) };
-    const compressed = { ...target, scale: target.scale.clone().multiplyScalar(0.998) };
+    const enlarged = { ...target, scale: target.scale.clone().multiplyScalar(1.02) };
+    const compressed = { ...target, scale: target.scale.clone().multiplyScalar(0.99) };
     await this.animateObject(card.group, enlarged, 82, easing.outCubic, isCurrent);
     if (!isCurrent()) return;
     await this.animateObject(card.group, compressed, 70, easing.inOutCubic, isCurrent);
@@ -943,8 +949,8 @@ export class TarotScene {
   async completeSpread() {
     this.stage = 'completing';
     await pause(120);
-    await tween(260, (amount) => {
-      this.altar.sigil.scale.setScalar(1 + amount * 0.045);
+    await tween(680, (amount) => {
+      this.altar.sigil.scale.setScalar(1 + Math.sin(amount * Math.PI) * 0.1);
       this.altar.setCompletion(amount);
       this.stars.setCompletion?.(amount);
     }, easing.outCubic);
