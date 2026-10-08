@@ -2,6 +2,14 @@ import * as THREE from 'three';
 import { easing } from '../animation/easing.js';
 
 const DOMAIN_STEP = Math.PI * 2 / 8;
+const DRAW_STAR_POINTS_COMPACT = [
+  [0, 1], [0.91, 0.7], [0.9, 0], [0.91, -0.7],
+  [0, -1], [-0.91, -0.7], [-0.9, 0], [-0.91, 0.7]
+];
+const DRAW_STAR_POINTS_STANDARD = [
+  [0, 1], [0.75, 0.78], [0.9, 0], [0.75, -0.72],
+  [0, -0.78], [-0.75, -0.72], [-0.9, 0], [-0.75, 0.78]
+];
 export const NODE_VISUALS = Object.freeze({
   dormant: { opacity: 0.12, scale: 0.93, glow: 0.03 },
   preglow: { opacity: 0.43, scale: 1, glow: 0.43 },
@@ -21,9 +29,14 @@ export const altarNodePose = (index, layout, frame = 'result') => {
   const radiusX = frame === 'draw' ? layout.nodeDrawRadiusX : layout.resultRadiusX;
   const radiusY = frame === 'draw' ? layout.nodeDrawRadiusY : layout.resultRadiusY;
   if (frame === 'draw') {
+    if (layout.name === 'desktop') {
+      return new THREE.Vector3(Math.cos(angle) * radiusX, layout.nodeDrawCenterY + Math.sin(angle) * radiusY, 0.1);
+    }
+    const points = layout.name === 'compact' ? DRAW_STAR_POINTS_COMPACT : DRAW_STAR_POINTS_STANDARD;
+    const [x, y] = points[index % points.length];
     return new THREE.Vector3(
-      Math.cos(angle) * radiusX,
-      layout.nodeDrawCenterY + Math.sin(angle) * radiusY,
+      x * radiusX,
+      layout.nodeDrawCenterY + y * radiusY,
       0.1
     );
   }
@@ -40,6 +53,10 @@ export const altarNodePose = (index, layout, frame = 'result') => {
     0.1
   );
 };
+
+export const altarNodeWidthScale = (index, layout, frame = 'result') => (
+  layout.name === 'standard-mobile' && frame === 'draw' && (index === 2 || index === 6) ? 0.45 : 1
+);
 
 const makeSprite = (texture, opacity) => {
   const material = new THREE.SpriteMaterial({
@@ -63,6 +80,7 @@ const createNode = (texture) => {
     positionTransition: null,
     width: 0.13,
     height: 0.235,
+    widthScale: 1,
     layoutScale: 1
   };
   sprite.scale.set(sprite.userData.width, sprite.userData.height, 1);
@@ -143,13 +161,13 @@ export const createAltar = async (textures) => {
   let nodeFrameTransition = null;
 
   const applyNodeVisual = (node) => {
-    const { visual, state, width, height, layoutScale } = node.userData;
+    const { visual, state, width, height, widthScale, layoutScale } = node.userData;
     const completionResponse = state === 'filled' ? completion : 0;
     const scale = visual.scale * layoutScale * (1 + completionResponse * 0.05);
     const brightness = 0.78 + visual.glow * 0.22 + completionResponse * 0.06;
     node.material.color.setScalar(brightness);
     node.material.opacity = (visual.opacity + completionResponse * 0.075) * (1 - readingMix * 0.62);
-    node.scale.set(width * scale, height * scale, 1);
+    node.scale.set(width * widthScale * scale, height * scale, 1);
   };
 
   const applyAtmosphere = () => {
@@ -216,6 +234,11 @@ export const createAltar = async (textures) => {
     if (positionTransition) {
       const progress = Math.min(1, (now - positionTransition.startedAt) / positionTransition.duration);
       node.position.lerpVectors(positionTransition.from, positionTransition.target, easing.inOutCubic(progress));
+      node.userData.widthScale = THREE.MathUtils.lerp(
+        positionTransition.fromWidthScale,
+        positionTransition.targetWidthScale,
+        easing.inOutCubic(progress)
+      );
       if (progress === 1) node.userData.positionTransition = null;
     }
     applyNodeVisual(node);
@@ -245,6 +268,7 @@ export const createAltar = async (textures) => {
     if (duration <= 0 || reducedMotion()) {
       nodes.forEach((node, index) => {
         node.position.copy(altarNodePose(index, layout, frame));
+        node.userData.widthScale = altarNodeWidthScale(index, layout, frame);
         node.userData.positionTransition = null;
       });
       return Promise.resolve();
@@ -256,6 +280,8 @@ export const createAltar = async (textures) => {
         node.userData.positionTransition = {
           from: node.position.clone(),
           target,
+          fromWidthScale: node.userData.widthScale,
+          targetWidthScale: altarNodeWidthScale(index, layout, frame),
           startedAt: performance.now(),
           duration
         };
@@ -272,6 +298,7 @@ export const createAltar = async (textures) => {
     ornamentBase.scale.setScalar(scale);
     nodes.forEach((node, index) => {
       node.position.copy(altarNodePose(index, layout, nodeFrame));
+      node.userData.widthScale = altarNodeWidthScale(index, layout, nodeFrame);
       node.userData.positionTransition = null;
       node.userData.layoutScale = layout.nodeScale;
     });

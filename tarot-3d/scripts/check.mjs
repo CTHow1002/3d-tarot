@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import * as THREE from 'three';
 import { TAROT_CARDS } from '../src/data/cards.js';
 import { DOMAINS } from '../src/data/domains.js';
-import { altarNodePose, NODE_VISUALS } from '../src/scene/Altar.js';
+import { altarNodePose, altarNodeWidthScale, NODE_VISUALS } from '../src/scene/Altar.js';
 import {
   advanceFanInertia,
   drawStageSpreadPose,
@@ -179,7 +180,8 @@ const layouts = [
   [390, 844, 'standard-mobile'],
   [375, 667, 'compact'],
   [430, 932, 'standard-mobile'],
-  [1024, 768, 'desktop']
+  [1024, 768, 'desktop'],
+  [320, 568, 'compact']
 ].map(([width, height, name]) => {
   const layout = getLayoutProfile(width, height);
   assert.equal(layout.name, name, `Expected ${name} layout at ${width}x${height}`);
@@ -208,13 +210,15 @@ assert.ok(mobileLayout.readingCameraZ < mobileLayout.resultCameraZ && compactLay
 assert.ok(compactLayout.revealScale > 1 && mobileLayout.revealScale > 1.1, 'Mobile reveal cards must be large enough to appreciate');
 assert.ok(compactLayout.stagingScale > 0.38 && mobileLayout.stagingScale > 0.42, 'Mobile staging cards must remain appreciable');
 assert.ok(compactLayout.resultSpreadScale > 0.9 && mobileLayout.resultSpreadScale > 0.95, 'Mobile result cards must be larger than the prior compact layout');
-for (const [layout, width, height] of [[compactLayout, 375, 667], [mobileLayout, 390, 844], [wideMobileLayout, 430, 932]]) {
+for (const [layout, width, height] of [[compactLayout, 375, 667], [mobileLayout, 390, 844], [wideMobileLayout, 430, 932], [getLayoutProfile(320, 568), 320, 568]]) {
   const viewHeight = 2 * (layout.readingCameraZ - layout.readingZ) * Math.tan(layout.readingFov * Math.PI / 360);
-  const cardHeight = layout.readingScale * 1.17 / viewHeight;
+  const cardHeight = layout.readingScale * 1.196 / viewHeight;
   const cardCenter = 0.5 - (layout.readingY - layout.readingTargetY) / viewHeight;
   const cardWidth = 0.78 * layout.readingScale / (viewHeight * width / height);
-  assert.ok(cardHeight >= 0.38 && cardHeight < 0.43, `${layout.name} Reading artwork must fill but fit above the sheet`);
-  assert.ok(cardCenter - cardHeight / 2 > 0 && cardCenter + cardHeight / 2 < 0.43, `${layout.name} Reading artwork must remain within its upper visual zone`);
+  assert.ok(cardHeight >= 0.46 && cardHeight < 0.49, `${width}x${height} Reading artwork must fill but fit above the sheet`);
+  assert.ok(cardCenter - cardHeight / 2 > 0.005 && cardCenter + cardHeight / 2 < 0.5, `${width}x${height} Reading artwork must remain clear of the viewport edge and sheet`);
+  const sheetGap = 0.5 - (cardCenter + cardHeight / 2);
+  assert.ok(sheetGap > 0 && sheetGap < (width <= 340 ? 0.015 : 0.012), `${width}x${height} Reading artwork should sit close to the sheet without overlapping`);
   assert.ok(cardWidth < 1, `${layout.name} Reading artwork must fit within the viewport width`);
 }
 for (const layout of layouts) {
@@ -256,24 +260,83 @@ for (const layout of layouts) {
   });
 }
 
-for (const [width, height] of [[390, 844], [375, 667], [430, 932], [1024, 768]]) {
+const projectedBounds = (camera, points) => {
+  const projected = points.map((point) => point.clone().project(camera));
+  return {
+    left: Math.min(...projected.map(({ x }) => x)),
+    right: Math.max(...projected.map(({ x }) => x)),
+    bottom: Math.min(...projected.map(({ y }) => y)),
+    top: Math.max(...projected.map(({ y }) => y))
+  };
+};
+const intersects = (a, b) => a.left < b.right && a.right > b.left && a.bottom < b.top && a.top > b.bottom;
+
+for (const [width, height] of [[320, 568], [390, 844], [375, 667], [430, 932], [1024, 768]]) {
   const layout = getLayoutProfile(width, height);
   const aspect = width / height;
-  const nodeHalfWidth = 0.13 * layout.nodeScale * 1.05 / 2;
-  const nodeHalfHeight = 0.235 * layout.nodeScale * 1.05 / 2;
+  const nodeLayoutScale = layout.name === 'desktop' ? 1.12 : layout.name === 'compact' ? 0.91 : 1;
+  const maxNodeScale = NODE_VISUALS.active.scale * 1.05;
+  const nodeHalfWidths = Array.from({ length: 8 }, (_, index) => (
+    0.13 * layout.nodeScale * nodeLayoutScale * maxNodeScale * altarNodeWidthScale(index, layout, 'draw') / 2
+  ));
+  const nodeHalfHeight = 0.235 * layout.nodeScale * nodeLayoutScale * maxNodeScale / 2;
   const drawDistance = layout.drawCameraZ + 0.6;
   const drawHalfWidth = Math.tan(layout.drawFov * Math.PI / 360) * drawDistance * aspect;
   const drawHalfHeight = Math.tan(layout.drawFov * Math.PI / 360) * drawDistance;
   const drawNodes = Array.from({ length: 8 }, (_, index) => altarNodePose(index, layout, 'draw'));
-  assert.ok(drawNodes.every((node) => Math.abs(node.x) + nodeHalfWidth + 0.1 < drawHalfWidth), `${width}x${height} draw nodes need horizontal safe margin`);
-  assert.ok(drawNodes.every((node) => Math.abs(node.y) + nodeHalfHeight + 0.1 < drawHalfHeight), `${width}x${height} draw nodes need vertical safe margin`);
+  if (layout.name !== 'desktop') {
+    assert.ok(Math.abs(drawNodes[0].x) < 0.001 && Math.abs(drawNodes[4].x) < 0.001, `${width}x${height} draw star needs top and bottom points`);
+    assert.ok(drawNodes[0].y > Math.max(...drawNodes.slice(1).map((node) => node.y)), `${width}x${height} draw star needs a clear top extreme`);
+    assert.ok(drawNodes[4].y < Math.min(...drawNodes.filter((_, index) => index !== 4).map((node) => node.y)), `${width}x${height} draw star needs a clear bottom extreme`);
+    assert.equal(new Set(drawNodes.map((node) => `${node.x.toFixed(3)},${node.y.toFixed(3)}`)).size, 8, `${width}x${height} draw star needs eight distinct anchors`);
+    assert.ok(Math.abs(drawNodes[1].x) / drawNodes[2].x > 0.8 && Math.abs(drawNodes[1].y - layout.nodeDrawCenterY) / (drawNodes[0].y - layout.nodeDrawCenterY) > 0.65 && Math.abs(drawNodes[1].y - layout.nodeDrawCenterY) / (drawNodes[0].y - layout.nodeDrawCenterY) < 0.85, `${width}x${height} draw diagonals must sit on outer star corners`);
+    for (const [right, left] of [[1, 7], [2, 6], [3, 5]]) {
+      assert.ok(drawNodes[right].x > 0 && drawNodes[left].x < 0 && Math.abs(drawNodes[right].x + drawNodes[left].x) < 0.001 && Math.abs(drawNodes[right].y - drawNodes[left].y) < 0.001, `${width}x${height} draw star must remain bilaterally symmetrical`);
+    }
+  }
+  assert.ok(drawNodes.every((node, index) => Math.abs(node.x) + nodeHalfWidths[index] + 0.02 < drawHalfWidth), `${width}x${height} draw nodes need horizontal safe margin`);
+  assert.ok(drawNodes.every((node) => Math.abs(node.y) + nodeHalfHeight + 0.02 < drawHalfHeight), `${width}x${height} draw nodes need vertical safe margin`);
   const fanTop = layout.fanY + layout.fanCenterLift + layout.fanScale * 1.17 / 2;
   assert.ok(Math.min(...drawNodes.map((node) => node.y)) - nodeHalfHeight > fanTop, `${width}x${height} draw nodes must clear the card fan`);
+  const camera = new THREE.PerspectiveCamera(layout.drawFov, aspect, 0.1, 30);
+  camera.position.set(0, 0.06, layout.drawCameraZ);
+  camera.lookAt(0, 0.14, 0);
+  camera.updateMatrixWorld();
+  const nodeBounds = drawNodes.map((node, index) => projectedBounds(camera, [
+    [-nodeHalfWidths[index], -nodeHalfHeight], [nodeHalfWidths[index], -nodeHalfHeight],
+    [nodeHalfWidths[index], nodeHalfHeight], [-nodeHalfWidths[index], nodeHalfHeight]
+  ].map(([x, y]) => new THREE.Vector3(node.x + x, node.y + y, -0.6))));
+  const stagingBounds = Array.from({ length: 8 }, (_, index) => {
+    const slot = drawStageSpreadPose(index, layout);
+    const halfWidth = 0.806 * slot.scale.x / 2;
+    const halfHeight = 1.196 * slot.scale.y / 2;
+    const cos = Math.cos(slot.rotation.z);
+    const sin = Math.sin(slot.rotation.z);
+    return projectedBounds(camera, [
+      [-halfWidth, -halfHeight], [halfWidth, -halfHeight],
+      [halfWidth, halfHeight], [-halfWidth, halfHeight]
+    ].map(([x, y]) => new THREE.Vector3(
+      slot.position.x + x * cos - y * sin,
+      slot.position.y + x * sin + y * cos,
+      slot.position.z + 0.023
+    )));
+  });
+  assert.ok(nodeBounds.every((node) => node.left > -1 && node.right < 1 && node.bottom > -1 && node.top < 1), `${width}x${height} draw node art must stay in view`);
+  if (layout.name !== 'desktop') {
+    assert.ok(nodeBounds.every((node) => stagingBounds.every((card) => !intersects(node, card))), `${width}x${height} draw nodes must stay outside all eight staging-card silhouettes`);
+  }
   const resultDistance = layout.resultCameraZ + 0.6;
   const resultHalfWidth = Math.tan(layout.resultFov * Math.PI / 360) * resultDistance * aspect;
   const resultNodes = Array.from({ length: 8 }, (_, index) => altarNodePose(index, layout, 'result'));
-  assert.ok(resultNodes.every((node) => Math.abs(node.x) + nodeHalfWidth < resultHalfWidth), `${width}x${height} result nodes must remain inside the camera frame`);
+  assert.ok(resultNodes.every((node) => Math.abs(node.x) + (0.13 * layout.nodeScale * nodeLayoutScale * maxNodeScale / 2) < resultHalfWidth), `${width}x${height} result nodes must remain inside the camera frame`);
 }
+
+const standardMobile = getLayoutProfile(390, 844);
+assert.equal(altarNodeWidthScale(2, standardMobile, 'draw'), 0.45, 'Standard-mobile side nodes need a narrow draw glyph to fit between cards');
+assert.equal(altarNodeWidthScale(6, standardMobile, 'draw'), 0.45, 'Standard-mobile side nodes need symmetrical draw sizing');
+assert.equal(altarNodeWidthScale(2, standardMobile, 'result'), 1, 'Result nodes must restore their approved width');
+assert.equal(altarNodeWidthScale(6, standardMobile, 'result'), 1, 'Result nodes must restore their approved width');
+assert.equal(altarNodeWidthScale(2, getLayoutProfile(375, 667), 'draw'), 1, 'Compact draw-node sizing must remain unchanged');
 
 const visualPool = Array.from({ length: 15 }, (_, index) => index);
 for (let step = 0; step < 23; step += 1) rotateDrawPool(visualPool, 1);

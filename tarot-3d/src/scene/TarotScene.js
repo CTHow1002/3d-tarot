@@ -64,9 +64,9 @@ export const getLayoutProfile = (width, height) => {
       stagingZ: -0.03,
       resultRadiusX: 1.06,
       resultRadiusY: 0.78,
-      nodeDrawRadiusX: 0.66,
-      nodeDrawRadiusY: 0.58,
-      nodeDrawCenterY: 0.46,
+      nodeDrawRadiusX: 0.98,
+      nodeDrawRadiusY: 0.77,
+      nodeDrawCenterY: 0.49,
       resultSpreadScale: 0.98,
       nodeOutsetVertical: 0.52,
       nodeOutsetDiagonal: 0.62,
@@ -79,9 +79,9 @@ export const getLayoutProfile = (width, height) => {
       readingSafePlaneGap: 0.34,
       readingCameraZ: 5.4,
       readingFov: 48,
-      readingY: 1.14,
+      readingY: width <= 340 ? 1.04 : 1.022,
       readingZ: 1.14,
-      readingScale: 1.3
+      readingScale: width <= 340 ? 1.51 : 1.53
     };
   }
 
@@ -119,9 +119,9 @@ export const getLayoutProfile = (width, height) => {
       stagingZ: -0.03,
       resultRadiusX: 1.06,
       resultRadiusY: 0.86,
-      nodeDrawRadiusX: 0.76,
-      nodeDrawRadiusY: 0.65,
-      nodeDrawCenterY: 0.55,
+      nodeDrawRadiusX: 0.53,
+      nodeDrawRadiusY: 1.06,
+      nodeDrawCenterY: 0.53,
       resultSpreadScale: 1.02,
       nodeOutsetVertical: 0.6,
       nodeOutsetDiagonal: 0.72,
@@ -134,9 +134,9 @@ export const getLayoutProfile = (width, height) => {
       readingSafePlaneGap: 0.34,
       readingCameraZ: 5.8,
       readingFov: 48,
-      readingY: 1.23,
+      readingY: 1.105,
       readingZ: 1.24,
-      readingScale: 1.42
+      readingScale: 1.66
     };
   }
 
