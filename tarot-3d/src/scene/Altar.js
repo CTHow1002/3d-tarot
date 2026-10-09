@@ -24,6 +24,13 @@ const lerpVisual = (from, to, amount) => ({
   glow: THREE.MathUtils.lerp(from.glow, to.glow, amount)
 });
 
+export const altarArtworkScale = (layout, resultMix = 0, readingMix = 0) => {
+  const normal = layout.name === 'desktop' ? 1.12 : layout.name === 'compact' ? 0.91 : 1;
+  const result = normal * (layout.name === 'desktop' ? 1.14 : 1.35);
+  const reading = normal * (layout.name === 'desktop' ? 1.3 : 1.68);
+  return THREE.MathUtils.lerp(THREE.MathUtils.lerp(normal, result, resultMix), reading, readingMix);
+};
+
 export const altarNodePose = (index, layout, frame = 'result') => {
   const angle = Math.PI / 2 - (index % 8) * DOMAIN_STEP;
   const radiusX = frame === 'draw' ? layout.nodeDrawRadiusX : layout.resultRadiusX;
@@ -153,6 +160,8 @@ export const createAltar = async (textures) => {
   });
 
   let completion = 0;
+  let resultMix = 0;
+  let artworkTransition = null;
   let readingMix = 0;
   let readingTarget = 0;
   let lastUpdate = 0;
@@ -172,13 +181,17 @@ export const createAltar = async (textures) => {
 
   const applyAtmosphere = () => {
     const normalMainOpacity = 0.28 + completion * 0.14;
-    mainMaterial.opacity = THREE.MathUtils.lerp(normalMainOpacity, 0.15, readingMix);
+    mainMaterial.opacity = THREE.MathUtils.lerp(normalMainOpacity, 0.22, readingMix);
     crescent.material.opacity = THREE.MathUtils.lerp(0.08 + completion * 0.04, 0.05, readingMix);
     pearlMaterial.emissiveIntensity = THREE.MathUtils.lerp(0.3 + completion * 0.18, 0.18, readingMix);
     glints.forEach(({ material, baseOpacity }) => {
       material.userData.baseOpacity = THREE.MathUtils.lerp(baseOpacity + completion * 0.02, baseOpacity * 0.45, readingMix);
       material.opacity = material.userData.baseOpacity;
     });
+  };
+
+  const updateArtworkScale = () => {
+    if (layout) ornamentBase.scale.setScalar(altarArtworkScale(layout, resultMix, readingMix));
   };
 
   const transitionNode = (node, target, duration, onDone) => {
@@ -256,7 +269,10 @@ export const createAltar = async (textures) => {
 
   const setReading = (open) => {
     readingTarget = open ? 1 : 0;
-    if (reducedMotion()) readingMix = readingTarget;
+    if (reducedMotion()) {
+      readingMix = readingTarget;
+      updateArtworkScale();
+    }
     refresh();
   };
 
@@ -265,7 +281,11 @@ export const createAltar = async (textures) => {
     nodeFrameTransition?.resolve();
     nodeFrameTransition = null;
     nodeFrame = frame;
+    const targetResultMix = frame === 'result' ? 1 : 0;
     if (duration <= 0 || reducedMotion()) {
+      resultMix = targetResultMix;
+      artworkTransition = null;
+      updateArtworkScale();
       nodes.forEach((node, index) => {
         node.position.copy(altarNodePose(index, layout, frame));
         node.userData.widthScale = altarNodeWidthScale(index, layout, frame);
@@ -273,6 +293,7 @@ export const createAltar = async (textures) => {
       });
       return Promise.resolve();
     }
+    artworkTransition = { from: resultMix, target: targetResultMix, startedAt: performance.now(), duration };
     return new Promise((resolve) => {
       nodeFrameTransition = { resolve };
       nodes.forEach((node, index) => {
@@ -294,8 +315,7 @@ export const createAltar = async (textures) => {
     nodeFrameTransition = null;
     layout = nextLayout;
     if (!layout) return;
-    const scale = layout.name === 'desktop' ? 1.12 : layout.name === 'compact' ? 0.91 : 1;
-    ornamentBase.scale.setScalar(scale);
+    updateArtworkScale();
     nodes.forEach((node, index) => {
       node.position.copy(altarNodePose(index, layout, nodeFrame));
       node.userData.widthScale = altarNodeWidthScale(index, layout, nodeFrame);
@@ -310,6 +330,12 @@ export const createAltar = async (textures) => {
     const elapsed = lastUpdate ? Math.min(0.05, (now - lastUpdate) / 1000) : 0.016;
     lastUpdate = now;
     readingMix = THREE.MathUtils.lerp(readingMix, readingTarget, 1 - Math.exp(-elapsed * 12));
+    if (artworkTransition) {
+      const progress = Math.min(1, (now - artworkTransition.startedAt) / artworkTransition.duration);
+      resultMix = THREE.MathUtils.lerp(artworkTransition.from, artworkTransition.target, easing.inOutCubic(progress));
+      if (progress === 1) artworkTransition = null;
+    }
+    updateArtworkScale();
     const breath = Math.sin(now * 0.00042);
     mainArt.scale.setScalar(1 + breath * 0.0025);
     sigil.position.y = breath * 0.003;

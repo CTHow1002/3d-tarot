@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import * as THREE from 'three';
 import { TAROT_CARDS } from '../src/data/cards.js';
 import { DOMAINS } from '../src/data/domains.js';
-import { altarNodePose, altarNodeWidthScale, NODE_VISUALS } from '../src/scene/Altar.js';
+import { altarArtworkScale, altarNodePose, altarNodeWidthScale, NODE_VISUALS } from '../src/scene/Altar.js';
 import {
   advanceFanInertia,
   drawStageSpreadPose,
@@ -222,6 +222,15 @@ for (const [layout, width, height] of [[compactLayout, 375, 667], [mobileLayout,
   assert.ok(cardWidth < 1, `${layout.name} Reading artwork must fit within the viewport width`);
 }
 for (const layout of layouts) {
+  const drawScale = altarArtworkScale(layout);
+  const resultScale = altarArtworkScale(layout, 1);
+  const readingScale = altarArtworkScale(layout, 1, 1);
+  const resultMidScale = altarArtworkScale(layout, 0.5);
+  const readingMidScale = altarArtworkScale(layout, 1, 0.5);
+  assert.ok(resultScale > drawScale, `${layout.name} altar artwork must expand in Results`);
+  assert.ok(readingScale > resultScale, `${layout.name} altar artwork must expand further in Reading`);
+  assert.ok(resultMidScale > drawScale && resultMidScale < resultScale, `${layout.name} altar must interpolate into Results`);
+  assert.ok(readingMidScale > resultScale && readingMidScale < readingScale, `${layout.name} altar must interpolate into Reading`);
   const anchors = Array.from({ length: 8 }, (_, index) => altarNodePose(index, layout));
   assert.equal(anchors.length, 8, `${layout.name} needs eight altar anchors`);
   assert.equal(new Set(anchors.map(({ x, y }) => `${x}:${y}`)).size, 8, `${layout.name} altar anchors must remain distinct`);
@@ -444,6 +453,9 @@ assert.ok(NODE_VISUALS.filled.opacity > NODE_VISUALS.dormant.opacity && NODE_VIS
 assert.ok(NODE_VISUALS.active.opacity > NODE_VISUALS.preglow.opacity && NODE_VISUALS.active.glow > NODE_VISUALS.preglow.glow, 'Active altar nodes must brighten after ignition');
 assert.match(altarSource, /awakenNode/, 'Altar nodes need an awakening transition');
 assert.match(altarSource, /setNodeFrame/, 'Altar nodes need draw and result spatial frames');
+assert.match(altarSource, /const targetResultMix = frame === 'result' \? 1 : 0;/, 'Result artwork scale must follow the altar frame');
+assert.match(altarSource, /if \(duration <= 0 \|\| reducedMotion\(\)\) \{\s*resultMix = targetResultMix;\s*artworkTransition = null;\s*updateArtworkScale\(\);/, 'Reduced motion must land directly on the selected altar frame');
+assert.match(altarSource, /if \(reducedMotion\(\)\) \{\s*readingMix = readingTarget;\s*updateArtworkScale\(\);/, 'Reduced motion must land directly on the Reading altar scale');
 assert.match(sceneSource, /this\.altar\.setNodeFrame\?\.\('result', 780\)/, 'Altar nodes must expand with the result transition');
 assert.doesNotMatch(altarSource, /setNodePosition|nodeAnchor/, 'Altar node anchors must not follow staging-card positions');
 assert.match(sceneSource, /this\.altar\.awakenNode\(positionIndex\)/, 'Node awakening must begin when a card is selected');
