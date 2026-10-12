@@ -85,6 +85,53 @@ body {
   letter-spacing: 0.18em;
 }
 
+.sound-toggle {
+  position: fixed;
+  z-index: 8;
+  top: calc(42px + env(safe-area-inset-top));
+  right: 12px;
+  display: inline-flex;
+  min-width: 72px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid #d7bb8247;
+  border-radius: 999px;
+  background: #1b1222d9;
+  color: #cdbc9c;
+  font: 10px ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  opacity: 0.86;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sound-toggle[data-enabled="true"] { border-color: #e0c58d88; color: #f0d69e; }
+.sound-toggle:active { transform: scale(0.96); }
+.sound-toggle:focus-visible { outline: 1px solid #e0c58de0; outline-offset: 2px; }
+.sound-toggle:disabled { opacity: 0.5; }
+
+.tarot-shell.is-reading .sound-toggle {
+  top: calc(12px + env(safe-area-inset-top));
+  right: auto;
+  left: 12px;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+.tarot-shell.is-reading .sound-toggle [data-audio-label] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .tarot-shell.is-reading .top-bar { opacity: 0; visibility: hidden; }
 
 .brand { font-size: 15px; letter-spacing: 0.18em; }
@@ -425,6 +472,14 @@ footer {
   pointer-events: none;
   transition: opacity 160ms ease, visibility 160ms ease;
 }
+
+.audio-credits {
+  color: #cdbc9c;
+  pointer-events: auto;
+  text-underline-offset: 2px;
+}
+
+.audio-credits:focus-visible { outline: 1px solid #e0c58de0; outline-offset: 2px; }
 
 .draw-panel:not([hidden]) ~ footer { opacity: 0; visibility: hidden; }
 .shuffle-panel:not([hidden]) ~ footer { opacity: 0; visibility: hidden; }

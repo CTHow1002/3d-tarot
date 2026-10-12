@@ -9,6 +9,9 @@ export const createUI = (root, actions) => {
       <div class="atmosphere" aria-hidden="true"></div>
       <div class="ui-layer">
         <header class="top-bar"><span class="brand">☾ 月间</span><span class="brand-note">3D 塔罗圣坛</span></header>
+        <button class="sound-toggle" type="button" data-action="toggle-audio" aria-pressed="false" aria-label="开启声音" title="开启声音">
+          <span aria-hidden="true">♫</span><span data-audio-label>声音关</span>
+        </button>
 
         <section class="home-panel panel" data-panel="home">
           <p class="eyebrow">EIGHT CARDS · A QUIET MOMENT</p>
@@ -69,7 +72,7 @@ export const createUI = (root, actions) => {
         </section>
 
         <p class="live-status" aria-live="polite" data-status></p>
-        <footer>塔罗是一面镜子，生活的方向仍在你手中。</footer>
+        <footer><span>塔罗是一面镜子，生活的方向仍在你手中。</span> <a class="audio-credits" href="/audio/CREDITS.txt">音效来源与许可</a></footer>
       </div>
     </div>`;
 
@@ -87,6 +90,7 @@ export const createUI = (root, actions) => {
   const closeReading = panels.reading.querySelector('[data-action="close-reading"]');
   const readingCopy = panels.reading.querySelector('.reading-copy');
   const resultReset = panels.results.querySelector('[data-action="reset"]');
+  const soundToggle = root.querySelector('[data-action="toggle-audio"]');
   let readingCanDismiss = false;
   let readingReturnFocus = null;
 
@@ -188,6 +192,15 @@ export const createUI = (root, actions) => {
     showDraw(drawn, deckLength) { showOnly('draw'); setDraw(drawn, deckLength); status.textContent = '牌扇已展开。'; },
     updateDraw: setDraw,
     showResults,
+    setAudioEnabled(enabled, available = true) {
+      const label = available ? (enabled ? '关闭声音' : '开启声音') : '当前浏览器不支持声音';
+      soundToggle.disabled = !available;
+      soundToggle.setAttribute('aria-pressed', String(enabled));
+      soundToggle.setAttribute('aria-label', label);
+      soundToggle.title = label;
+      soundToggle.querySelector('[data-audio-label]').textContent = enabled ? '声音开' : '声音关';
+      soundToggle.dataset.enabled = String(enabled);
+    },
     beginReading() {
       readingReturnFocus = document.activeElement;
       readingCanDismiss = false;

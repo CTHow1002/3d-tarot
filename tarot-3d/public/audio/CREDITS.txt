@@ -1,0 +1,58 @@
+Moonlit Tarot v36.4 audio assets
+================================
+
+All files are stored locally and served from this site; the app does not hotlink audio.
+
+Background music
+----------------
+“Calm Track” by pmiller — CC0 / public domain, OpenGameArt:
+https://opengameart.org/content/calm-track
+Source file: calm_track-loop.ogg (loopable OGG). The site copy is encoded as MP3 for iPhone/Safari playback; the recording and loop points were not otherwise changed. No attribution is required under CC0.
+
+Card handling (CC0)
+-------------------
+“Riffle shuffle with bridge” by Right_Kidney — recorded on iPhone 13, CC0, Freesound #823805:
+https://freesound.org/people/Right_Kidney/sounds/823805/
+Local file uses Freesound's high-quality MP3 preview.
+
+“Card slide” by BapttX — recorded with a PreSonus Revelator, CC0, Freesound #843344:
+https://freesound.org/people/BapttX/sounds/843344/
+Local file uses Freesound's high-quality MP3 preview.
+
+“PickupCard05” by SilverDubloons — recorded with a Blue Yeti, CC0, Freesound #817551:
+https://freesound.org/people/SilverDubloons/sounds/817551/
+Local file uses Freesound's high-quality MP3 preview.
+
+“Playing Card Deal Variation 2” by el_boss — CC0, Freesound #571576:
+https://freesound.org/people/el_boss/sounds/571576/
+Local file uses Freesound's high-quality MP3 preview.
+
+“Playing Card Slide Left” by el_boss — CC0, Freesound #571574:
+https://freesound.org/people/el_boss/sounds/571574/
+“Playing Card Slide Right” by el_boss — CC0, Freesound #571581:
+https://freesound.org/people/el_boss/sounds/571581/
+Both local files use Freesound's high-quality MP3 previews.
+
+“Playing Card Sounds” by Brian MacIntosh (BMacZero) — CC0, OpenGameArt:
+https://opengameart.org/content/playing-card-sounds
+contact1.wav and cut.wav are local source files; attribution is optional.
+
+Card flip
+---------
+“Flip.ogg” by egomassive, based on the original “Card Flip” recording by F4ngy — CC BY 3.0,
+Freesound #536782. Credit the original recorder F4ngy as requested by egomassive.
+https://freesound.org/people/egomassive/sounds/536782/
+The source page lists an Ogg Vorbis upload; the local MP3 uses Freesound's high-quality MP3 preview without further editing for this release.
+License: CC BY 3.0 Unported — https://creativecommons.org/licenses/by/3.0/
+
+Celestial glass bells
+---------------------
+“Glass Bell Sounds” by Hansjörg Malthaner (Varkalandar) — CC BY 3.0, OpenGameArt:
+https://opengameart.org/content/glass-bell-sounds
+Attribution: Hansjörg Malthaner, https://opengameart.org/users/varkalandar
+The source page offers CC BY 3.0, CC BY-SA 3.0 and OGA-BY 3.0; this project uses the CC BY 3.0 option:
+https://creativecommons.org/licenses/by/3.0/
+Files included: hjm-glass_bell_1.wav, hjm-glass_bell_3.wav, hjm-glass_bell_5.wav. They remain WAV recordings in the site bundle.
+
+CC0 permits commercial use and redistribution without attribution: https://creativecommons.org/publicdomain/zero/1.0/
+CC BY permits redistribution and adaptation with the attribution and license link above.

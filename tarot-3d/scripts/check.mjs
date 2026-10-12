@@ -19,10 +19,12 @@ import {
   readingPose,
   resultSpreadPose,
   revealPose,
-  rotateDrawPool
+  rotateDrawPool,
+  TarotScene
 } from '../src/scene/TarotScene.js';
 import { TarotState } from '../src/state/tarot-state.js';
 import { pause, tween } from '../src/animation/tween.js';
+import { AUDIO_CUES, AUDIO_MIX, AudioManager, MUSIC_ASSET } from '../src/audio/AudioManager.js';
 
 assert.equal(TAROT_CARDS.length, 78, 'Expected all 78 tarot cards');
 assert.equal(new Set(TAROT_CARDS.map((card) => card.id)).size, 78, 'Card ids must be unique');
@@ -430,7 +432,7 @@ assert.equal(reversedState.readingAt(0), TAROT_CARDS[0].readings[0].reversed, 'R
 assert.match(sceneSource, /this\.reading = \{ index, card, slot: copyPose\(card\.group\), others \}/, 'Reading must retain selected and other Card3D source poses');
 assert.match(sceneSource, /if \(this\.stage === 'reading' && this\.reading\) \{[\s\S]*this\.reading\.slot = slots\[this\.reading\.index\];[\s\S]*applyPose\(this\.reading\.card\.group, this\.readingPose\(\)\);/, 'Reading resize must update selected card pose and return slot');
 assert.match(sceneSource, /const layoutVersion = this\.layoutVersion;[\s\S]*const isCurrentLayout = \(\) => layoutVersion === this\.layoutVersion/, 'Reading transitions must stop stale layout tweens after resize');
-assert.match(sceneSource, /await this\.animateFlight\(card, target\);\s*const landingTarget = this\.drawStageSpreadPose\(positionIndex\);\s*await this\.settleCard\(card, landingTarget\)/, 'Draw flight must settle at the latest layout target');
+assert.match(sceneSource, /await this\.animateFlight\(card, target\);\s*const landingTarget = this\.drawStageSpreadPose\(positionIndex\);\s*this\.callbacks\.onSound\?\.\('card-landing'\);\s*await this\.settleCard\(card, landingTarget\)/, 'Draw flight must cue and settle at the latest layout target');
 assert.match(sceneSource, /await this\.animateSet\(clearing, 160, 0, easing\.outCubic, isCurrentLayout\);[\s\S]*this\.animateReadingOpenPath/, 'Other cards must clear before selected extraction');
 assert.match(sceneSource, /animateReadingOpenPath\(card, this\.reading\.slot, isCurrentLayout\)/, 'Reading open must use the selected Card3D safe extraction path');
 assert.match(sceneSource, /animateReadingReturnPath\(card, slot, isCurrentLayout\)/, 'Reading close must use the stored slot safe return path');
@@ -471,6 +473,13 @@ assert.match(uiSource, /'★'\.repeat\(reading\.intensity\)\s*\+\s*'☆'\.repeat
 assert.match(uiSource, /信息强度 \$\{reading\.intensity\} 星，共五颗/, 'Reading intensity stars need an accessible description');
 assert.match(uiSource, /data-result-actions/, 'Keyboard users need controls for each result card');
 assert.match(uiSource, /button\.dataset\.action = 'read-result'/, 'Result reading controls must open their matching cards');
+assert.match(uiSource, /data-action="toggle-audio"[^>]*aria-pressed="false"/, 'Audio toggle must start with an accessible muted state');
+assert.match(uiSource, /<a class="audio-credits" href="\/audio\/CREDITS\.txt">音效来源与许可<\/a>/, 'Home footer must link to accessible audio attribution');
+assert.match(uiSource, /setAudioEnabled\(enabled, available = true\)/, 'Audio toggle must reflect support and enabled state accessibly');
+assert.match(styleSource, /\.sound-toggle\s*\{[^}]*pointer-events:\s*auto/, 'Audio toggle must remain usable above the scene layer');
+assert.match(styleSource, /\.audio-credits\s*\{[^}]*pointer-events:\s*auto/, 'Audio attribution link must remain clickable within the footer');
+assert.match(styleSource, /\.tarot-shell\.is-reading\s+\.sound-toggle\s*\{[^}]*left:\s*12px/, 'Reading must move the audio control clear of the enlarged card');
+assert.match(styleSource, /\.tarot-shell\.is-reading\s+\.sound-toggle\s+\[data-audio-label\]/, 'Reading icon-only audio control must keep its accessible label');
 assert.match(mainSource, /'draw-current': \(\) => drawCard\(scene\?\.currentDrawCard\(\)\)/, 'Draw selection must use the same guarded draw flow');
 assert.match(mainSource, /'read-result': \(index\) => openReading\(Number\(index\)\)/, 'Result controls must use the existing reading flow');
 assert.match(mainSource, /第 ' \+ state\.drawn\.length \+ ' 张已落位/, 'Live status must announce settled draws and the next position');
@@ -493,4 +502,264 @@ for (let round = 0; round < 100; round += 1) {
   assert.ok(state.drawn.every((_, index) => typeof state.readingAt(index).theme === 'string'), 'Drawn cards must resolve readings');
 }
 
-console.log('PASS: 78 cards, 8 domains, standard terminology, keyboard card access, modal focus, altar assets, viewport-fit nodes, outside-dismiss reading, safe extraction and return, result depth separation, unique draws, physical fan depth, inertial recycling, and visual-card replacement are present.');
+assert.equal(Object.keys(AUDIO_CUES).length, 12, 'Audio needs one mapping for each remaining interaction');
+const soundCueCalls = [
+  ...mainSource.matchAll(/audio\.playCue\('([^']+)'\)/g),
+  ...sceneSource.matchAll(/this\.callbacks\.onSound\?\.\('([^']+)'\)/g)
+].map((match) => match[1]).sort();
+assert.deepEqual(soundCueCalls, Object.keys(AUDIO_CUES).sort(), 'Every cue must be connected to exactly one app event');
+const cardDrawSource = sceneSource.slice(sceneSource.indexOf('async drawCard('), sceneSource.indexOf('async completeSpread('));
+const cardDrawCues = [...cardDrawSource.matchAll(/this\.callbacks\.onSound\?\.\('([^']+)'\)/g)].map((match) => match[1]);
+assert.deepEqual(cardDrawCues, ['card-selection', 'card-lift', 'card-flip', 'card-flight', 'card-landing'], 'Individual card draws must use Foley without bell cues');
+assert.match(cardDrawSource, /this\.altar\.awakenNode\(positionIndex\);/, 'Card draws must keep their node illumination visual');
+assert.match(sceneSource, /async completeSpread\(\)[\s\S]*this\.callbacks\.onSound\?\.\('eighth-completion'\)/, 'The eighth-card completion cue must remain a separate event');
+assert.equal([...sceneSource.matchAll(/this\.callbacks\.onSound\?\.\('eighth-completion'\)/g)].length, 1, 'The eighth-card completion cue must fire exactly once');
+assert.match(readFileSync(resolve('src/audio/AudioManager.js'), 'utf8'), /'ritual-start': \[\{ file: '\/audio\/glass-bell-1\.wav'/, 'Ritual-start bell must remain mapped');
+assert.equal(AUDIO_CUES['eighth-completion'].length, 1, 'Completion must contain exactly one audio layer');
+assert.equal(AUDIO_CUES['eighth-completion'][0].file, '/audio/glass-bell-5.wav', 'Completion must use the single glass-bell-5 recording');
+assert.ok(AUDIO_CUES['eighth-completion'][0].gain <= 0.8, 'Completion bell gain must remain restrained');
+assert.ok(AUDIO_MIX.music < AUDIO_MIX.effects && AUDIO_MIX.music > 0 && AUDIO_MIX.effects > 0, 'Music must sit below the effects mix');
+assert.match(mainSource, /const audioReady = audio\.prepareForInteraction\(\);[\s\S]*await audioReady/, 'Stored audio preference must unlock and preload on the start gesture');
+assert.doesNotMatch(sceneSource, /card-flip-sparkle|node-illumination/, 'Individual card draws must not trigger bell cues');
+assert.match(sceneSource, /await this\.animateFlight\(card, target\);\s*const landingTarget = this\.drawStageSpreadPose\(positionIndex\);\s*this\.callbacks\.onSound\?\.\('card-landing'\)/, 'Landing Foley must begin at the completed flight target');
+assert.match(sceneSource, /await this\.settleCard\(card, landingTarget\);\s*this\.callbacks\.onSoundStop\?\.\('card-landing'\)/, 'Landing Foley must fade at the settle boundary');
+assert.match(sceneSource, /this\.callbacks\.onSoundStop\?\.\('deck-shuffle'\);\s*this\.callbacks\.onSoundStop\?\.\('ritual-start'\);[\s\S]*this\.stage = 'draw'/, 'Shuffle and ritual cues must stop before card drawing begins');
+assert.match(sceneSource, /pointerup'[\s\S]*this\.callbacks\.onSoundStop\?\.\('fan-swipe'\)/, 'Swipe Foley must stop when the drag gesture ends');
+assert.match(cardDrawSource, /card\.setCard\(cardData, await frontTexture\);\s*this\.callbacks\.onSound\?\.\('card-flip'\);\s*await Promise\.all\(\[\s*this\.animateObject\(card\.group, pose\(reveal\.position\.x, reveal\.position\.y, reveal\.position\.z, 0, Math\.PI/, 'Flip Foley must wait for the front texture and begin with the flip motion');
+assert.ok(sceneSource.indexOf("if (this.stage !== 'draw' || this.drawBusy) throw") < sceneSource.indexOf("this.callbacks.onSound?.('card-selection')"), 'Rejected or busy draws must not play successful selection audio');
+assert.match(mainSource, /onSoundStop: \(cue\) => audio\.stopCue\(cue\)/, 'Scene phase boundaries must stop only their matching effect cue');
+assert.doesNotMatch(readFileSync(resolve('src/audio/AudioManager.js'), 'utf8'), /createOscillator|createBiquadFilter/, 'Card audio must use recorded assets, not synthesized tones');
+const auditionSource = readFileSync(resolve('scripts/audio-audition.html'), 'utf8');
+assert.equal(existsSync(resolve('public/audio-audition.html')), false, 'Developer audition page must not live in the public build directory');
+assert.equal((auditionSource.match(/data-file="\/audio\/glass-bell-5\.wav">八张完成 · 单铃<\/button>/g) ?? []).length, 1, 'Audition page must expose one matching completion bell entry');
+assert.doesNotMatch(auditionSource, /八张完成 · 铃声[一二]/, 'Audition page must not show duplicate completion bell labels');
+assert.doesNotMatch(auditionSource, /翻牌星光|星盘节点/, 'Audition page must not imply that individual draws trigger bells');
+const audioFiles = new Set(Object.values(AUDIO_CUES).flatMap((cue) => cue.map(({ file }) => file)));
+for (const file of audioFiles) {
+  assert.ok(existsSync(resolve('public', file.slice(1))), `Audio asset must exist locally: ${file}`);
+  assert.ok(auditionSource.includes(file), `Audition page must expose the mapped asset: ${file}`);
+}
+assert.ok(existsSync(resolve('public', MUSIC_ASSET.slice(1))), 'The loopable music file must be included locally');
+assert.ok(auditionSource.includes(MUSIC_ASSET), 'The audition page must expose the background loop');
+const audioCredits = readFileSync(resolve('public/audio/CREDITS.txt'), 'utf8');
+assert.match(audioCredits, /CC0 permits commercial use and redistribution/);
+assert.match(audioCredits, /F4ngy/);
+assert.match(audioCredits, /Hansjörg Malthaner/);
+assert.match(audioCredits, /https:\/\/freesound\.org\/people\/egomassive\/sounds\/536782\//);
+assert.match(audioCredits, /https:\/\/opengameart\.org\/content\/glass-bell-sounds/);
+assert.match(audioCredits, /https:\/\/creativecommons\.org\/licenses\/by\/3\.0\//, 'CC BY 3.0 assets must link to the license');
+assert.match(audioCredits, /high-quality MP3 preview/);
+assert.match(audioCredits, /loopable OGG/);
+
+class FakeAudioParam {
+  constructor(value = 0) { this.value = value; }
+  setValueAtTime(value) { this.value = value; }
+  linearRampToValueAtTime(value) { this.value = value; }
+  exponentialRampToValueAtTime(value) { this.value = value; }
+  cancelScheduledValues() {}
+  cancelAndHoldAtTime() {}
+}
+class FakeAudioNode {
+  constructor() {
+    this.gain = new FakeAudioParam();
+    this.threshold = new FakeAudioParam();
+    this.knee = new FakeAudioParam();
+    this.ratio = new FakeAudioParam();
+    this.attack = new FakeAudioParam();
+    this.release = new FakeAudioParam();
+    this.playbackRate = new FakeAudioParam(1);
+  }
+  connect() {}
+  disconnect() {}
+  start() {}
+  stop(when) { this.stopTime = when; this.onended?.(); }
+}
+class FakeAudioElement {
+  constructor() { this.paused = true; this.playCount = 0; }
+  play() { this.paused = false; this.playCount += 1; return Promise.resolve(); }
+  pause() { this.paused = true; }
+}
+class FakeAudioContext {
+  constructor() { this.currentTime = 0; this.state = 'suspended'; this.destination = {}; this.sources = []; }
+  createGain() { return new FakeAudioNode(); }
+  createDynamicsCompressor() { return new FakeAudioNode(); }
+  createMediaElementSource() { return new FakeAudioNode(); }
+  createBufferSource() { const source = new FakeAudioNode(); this.sources.push(source); return source; }
+  decodeAudioData() { return Promise.resolve({ duration: 0.5 }); }
+  resume() { this.state = 'running'; return Promise.resolve(); }
+  suspend() { this.state = 'suspended'; return Promise.resolve(); }
+  close() { this.state = 'closed'; return Promise.resolve(); }
+}
+const previousAudioGlobals = {
+  AudioContext: globalThis.AudioContext,
+  webkitAudioContext: globalThis.webkitAudioContext,
+  Audio: globalThis.Audio,
+  fetch: globalThis.fetch,
+  localStorage: globalThis.localStorage,
+  document: globalThis.document
+};
+const preferences = new Map();
+const visibilityHandlers = new Map();
+globalThis.AudioContext = FakeAudioContext;
+globalThis.webkitAudioContext = undefined;
+globalThis.Audio = FakeAudioElement;
+globalThis.fetch = async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) });
+globalThis.localStorage = {
+  getItem: (key) => preferences.get(key) ?? null,
+  setItem: (key, value) => preferences.set(key, value)
+};
+globalThis.document = {
+  hidden: false,
+  addEventListener: (name, handler) => visibilityHandlers.set(name, handler)
+};
+try {
+  const audio = new AudioManager();
+  assert.equal(audio.enabled, false, 'Audio must default to muted');
+  assert.equal(audio.context, null, 'AudioContext must stay lazy until enabled');
+  assert.equal(audio.playCue('ritual-start'), false, 'Muted audio must not play cues');
+  assert.equal(await audio.setEnabled(true), true, 'Audio must enable from a user gesture');
+  assert.equal(audio.context.state, 'running', 'Enabling audio must resume the reusable context');
+  const reusableContext = audio.context;
+  assert.equal(audio.musicGain.gain.value, AUDIO_MIX.music, 'Ambient music must use its own quieter gain');
+  assert.equal(audio.effectsGain.gain.value, AUDIO_MIX.effects, 'Effects must use a separate gain');
+  assert.equal(audio.musicElement.playCount, 1, 'Background music must begin after the user gesture');
+  assert.equal(audio.buffers.size, audioFiles.size, 'All short recorded effects must be decoded once');
+  assert.equal(preferences.get('moonlit-audio-enabled'), 'true', 'Enabled state must persist');
+  assert.equal(audio.playCue('fan-swipe'), true, 'First fan swipe cue must play');
+  assert.equal(audio.playCue('fan-swipe'), false, 'Fan swipe cues must be rate-limited');
+  audio.context.currentTime += 0.17;
+  assert.equal(audio.playCue('fan-swipe'), true, 'Fan swipe cue must resume after its cooldown');
+  assert.equal(audio.playCue('unknown'), false, 'Unknown cues must fail gracefully');
+  for (const name of Object.keys(AUDIO_CUES).filter((cue) => cue !== 'fan-swipe')) {
+    assert.equal(audio.playCue(name), true, `${name} must play its mapped recorded cue`);
+    for (const voice of [...audio.effectVoices]) voice.source.onended();
+  }
+  assert.equal(audio.playCue('deck-shuffle'), true, 'Shuffle cue must start');
+  const shuffleVoice = [...audio.effectVoices][0];
+  assert.equal(audio.stopCue('deck-shuffle'), 1, 'Shuffle cue must stop at its phase boundary');
+  assert.equal(shuffleVoice.source.stopTime, audio.context.currentTime + 0.08, 'Stopped effects must use a short natural fade');
+  assert.equal(audio.effectVoices.size, 0, 'Stopped cues must release their voice slot');
+  assert.equal(audio.musicElement.paused, false, 'Stopping an effect must not interrupt continuous music');
+  for (let index = 0; index < 5; index += 1) {
+    audio.context.currentTime += 0.17;
+    assert.equal(audio.playCue('fan-swipe'), true, 'Swipe cues may overlap within the voice cap');
+  }
+  audio.context.currentTime += 0.17;
+  assert.equal(audio.playCue('fan-swipe'), false, 'Effect voices must remain capped');
+  assert.equal(audio.stopCue('fan-swipe'), 5, 'Ending a drag must release overlapping swipe voices');
+  assert.equal(audio.effectVoices.size, 0, 'Stopped swipe voices must not exhaust later actions');
+  assert.equal(audio.playCue('card-selection'), true, 'A later draw cue must play after stale swipes stop');
+  for (const voice of [...audio.effectVoices]) voice.source.onended();
+  globalThis.document.hidden = true;
+  visibilityHandlers.get('visibilitychange')();
+  assert.equal(audio.visible, false, 'Hidden pages must mute and suspend audio');
+  await new Promise((resolve) => setTimeout(resolve, 380));
+  assert.equal(audio.context.state, 'suspended', 'Hidden-page audio context must suspend');
+  globalThis.document.hidden = false;
+  visibilityHandlers.get('visibilitychange')();
+  assert.equal(audio.context.state, 'running', 'Visible pages may resume an enabled context');
+  assert.equal(await audio.setEnabled(false), false, 'Mute must stop music and effects');
+  assert.equal(preferences.get('moonlit-audio-enabled'), 'false', 'Muted state must persist');
+  assert.equal(audio.context, reusableContext, 'Mute and visibility changes must reuse one AudioContext');
+  await new Promise((resolve) => setTimeout(resolve, 380));
+  assert.equal(audio.musicElement.paused, true, 'Muting must pause streamed background audio');
+  assert.equal(await audio.setEnabled(true), true, 'Audio can be enabled again without creating a new context');
+  assert.equal(audio.context, reusableContext, 'Repeated enable must reuse the same AudioContext');
+  assert.equal(audio.playCue('card-landing'), true, 'Cues remain available after repeated enable');
+  for (const voice of [...audio.effectVoices]) voice.source.onended();
+  await new Promise((resolve) => setTimeout(resolve, 380));
+} finally {
+  for (const [key, value] of Object.entries(previousAudioGlobals)) {
+    if (value === undefined) delete globalThis[key];
+    else globalThis[key] = value;
+  }
+}
+
+const testPose = (rotationY = 0) => ({
+  position: new THREE.Vector3(),
+  rotation: new THREE.Euler(0, rotationY, 0),
+  scale: new THREE.Vector3(1, 1, 1)
+});
+
+{
+  const events = [];
+  const scene = Object.create(TarotScene.prototype);
+  let stage = 'home';
+  Object.defineProperty(scene, 'stage', {
+    get: () => stage,
+    set: (value) => { stage = value; events.push(`stage:${value}`); }
+  });
+  scene.callbacks = {
+    onSound: (cue) => events.push(`play:${cue}`),
+    onSoundStop: (cue) => events.push(`stop:${cue}`)
+  };
+  scene.cards = Array.from({ length: 16 }, () => ({
+    group: { visible: false, userData: {} },
+    clearFront() {},
+    setFaceDown() {}
+  }));
+  scene.viewportProfile = {};
+  scene.altar = { setNodeFrame: (frame) => events.push(`frame:${frame}`) };
+  scene.cameraPose = () => ({});
+  scene.animateCameraPose = async () => {};
+  scene.animateSet = async () => {};
+  scene.prepareDrawPool = () => events.push('prepare-draw-pool');
+  scene.layoutDraw = async () => events.push('layout-draw');
+  await scene.beginShuffle();
+  assert.ok(events.indexOf('stop:deck-shuffle') > events.indexOf('layout-draw'), 'Shuffle Foley must stop after the deck reaches its draw layout');
+  assert.ok(events.indexOf('stop:ritual-start') < events.indexOf('stage:draw'), 'Ritual bell must fade before the first card can be selected');
+}
+
+{
+  const events = [];
+  let resolveFront;
+  const frontTexture = new Promise((resolve) => { resolveFront = resolve; });
+  const card = {
+    group: { position: new THREE.Vector3(), rotation: new THREE.Euler(), scale: new THREE.Vector3(1, 1, 1), userData: {} },
+    clearFront() {},
+    setFaceDown() {},
+    setCard: () => events.push('texture-applied')
+  };
+  const scene = Object.create(TarotScene.prototype);
+  scene.stage = 'draw';
+  scene.drawBusy = false;
+  scene.drawPool = [card];
+  scene.unusedPool = [];
+  scene.drawOffset = 0;
+  scene.fanMotionRaf = 0;
+  scene.callbacks = {
+    onSound: (cue) => events.push(`sound:${cue}`),
+    onSoundStop: (cue) => events.push(`stop:${cue}`)
+  };
+  scene.textures = { getFront: () => { events.push('texture-request'); return frontTexture; } };
+  scene.altar = { awakenNode() {}, setNodeState() {} };
+  scene.spreadCards = Array(8).fill(null);
+  scene.revealPose = () => testPose();
+  scene.cameraPose = () => ({ position: new THREE.Vector3(), target: new THREE.Vector3(), fov: 42 });
+  scene.animateObject = async (_object, next) => {
+    if (next.rotation.y === Math.PI) events.push('flip-motion-start');
+  };
+  scene.layoutDraw = async () => {};
+  scene.animateCameraPose = async () => {};
+  scene.drawStageSpreadPose = () => testPose(Math.PI);
+  scene.animateFlight = async () => {};
+  scene.settleCard = async () => {};
+  const previousWindow = globalThis.window;
+  globalThis.window = { matchMedia: () => ({ matches: true }) };
+  try {
+    const drawing = scene.drawCard({ id: 'test-card' }, 0, card);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(events.includes('texture-request'), 'Draw must request the selected front lazily');
+    assert.ok(!events.includes('sound:card-flip'), 'A delayed card front must not trigger flip audio early');
+    assert.ok(!events.includes('flip-motion-start'), 'A delayed card front must not start flipping early');
+    resolveFront({});
+    await drawing;
+    assert.ok(events.indexOf('texture-applied') < events.indexOf('sound:card-flip'), 'Texture must be applied before flip audio');
+    assert.ok(events.indexOf('sound:card-flip') < events.indexOf('flip-motion-start'), 'Flip audio must start with the actual flip');
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+}
+
+console.log('PASS: 78 cards, 8 domains, accessible Tarot flows, viewport-safe altar and Reading layouts, unique draws, inertial fan behavior, audio lifecycle, cue phase stops, delayed texture synchronization, and swipe throttling are verified.');

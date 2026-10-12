@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#120d1b" />
+    <title>月间 · 声音试听（开发工具）</title>
+    <style>
+      :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #120d1b; color: #eee4d6; }
+      body { max-width: 640px; margin: 0 auto; padding: 28px 18px 48px; }
+      h1 { color: #e7c991; font: 500 1.4rem/1.3 Georgia, serif; letter-spacing: .08em; }
+      p { color: #b9aebd; }
+      audio { width: 100%; margin: 14px 0 20px; }
+      .cues { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      button { min-height: 48px; border: 1px solid #b69b6866; border-radius: 12px; background: #21182a; color: #eee4d6; font: inherit; text-align: left; padding: 10px 12px; }
+      button:active { background: #34263b; }
+      button:focus-visible, a:focus-visible { outline: 2px solid #e7c991; outline-offset: 2px; }
+      a { color: #e7c991; }
+      #status { min-height: 1.5em; color: #cfb883; }
+      @media (max-width: 420px) { .cues { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <h1>声音试听 · v36.4</h1>
+    <p>点击声音按钮试听对应录音。背景音乐会循环播放；其余音效逐个试听。</p>
+    <audio id="player" controls preload="none"></audio>
+    <div class="cues">
+      <button data-file="/audio/calm-track-loop.mp3" data-loop="true">背景音乐 · Calm Track</button>
+      <button data-file="/audio/glass-bell-1.wav">仪式开始 · 轻玻璃铃</button>
+      <button data-file="/audio/riffle-bridge.mp3">洗牌 · Riffle + bridge</button>
+      <button data-file="/audio/card-slide.mp3">牌扇滑动 · Card slide</button>
+      <button data-file="/audio/contact1.wav">选择卡牌 · 轻触</button>
+      <button data-file="/audio/card-pickup.mp3">拿起卡牌 · Card pickup</button>
+      <button data-file="/audio/card-flip.mp3">翻牌 · Card flip</button>
+      <button data-file="/audio/card-slide-right.mp3">飞入牌阵 · Card slide</button>
+      <button data-file="/audio/card-deal.mp3">落牌 · Deal on table</button>
+      <button data-file="/audio/glass-bell-5.wav">八张完成 · 单铃</button>
+      <button data-file="/audio/card-slide-left.mp3">打开解读 · 卡牌滑动</button>
+      <button data-file="/audio/card-slide-right.mp3">关闭解读 · 卡牌滑动</button>
+      <button data-file="/audio/cut.wav">重新开始 · 收牌</button>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+    <p><a href="/audio/CREDITS.txt">音效来源与许可</a> · 此页仅供开发试听，不属于正式功能。</p>
+    <script>
+      const player = document.querySelector('#player');
+      const status = document.querySelector('#status');
+      document.querySelector('.cues').addEventListener('click', async (event) => {
+        const button = event.target.closest('button[data-file]');
+        if (!button) return;
+        player.pause();
+        player.src = button.dataset.file;
+        player.loop = button.dataset.loop === 'true';
+        try {
+          await player.play();
+          status.textContent = `正在试听：${button.textContent}`;
+        } catch {
+          status.textContent = '播放未能开始，请再点一次试听按钮。';
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -4,23 +4,34 @@ import { TarotState } from './state/tarot-state.js';
 import { TarotScene } from './scene/TarotScene.js';
 import { createUI } from './ui/ui.js';
 import { pause } from './animation/tween.js';
+import { AudioManager } from './audio/AudioManager.js';
 
 const root = document.querySelector('#app');
 let state;
 let scene;
 let busy = false;
+const audio = new AudioManager();
 
 const ui = createUI(root, {
   start: () => startReading(),
   'draw-current': () => drawCard(scene?.currentDrawCard()),
   'read-result': (index) => openReading(Number(index)),
+  'toggle-audio': async () => {
+    const requested = !audio.enabled;
+    const enabled = await audio.setEnabled(requested);
+    ui.setAudioEnabled(enabled, audio.available);
+    if (requested && !enabled) ui.setStatus(audio.available ? '声音素材暂时无法加载。' : '当前浏览器无法播放声音。');
+  },
   reset: () => resetReading(),
   'close-reading': () => closeReading()
 });
+ui.setAudioEnabled(audio.enabled, audio.available);
 
 scene = new TarotScene(ui.sceneHost, null, {
   onDraw: (selectedCard) => drawCard(selectedCard),
-  onReading: (index) => openReading(index)
+  onReading: (index) => openReading(index),
+  onSound: (cue) => audio.playCue(cue),
+  onSoundStop: (cue) => audio.stopCue(cue)
 });
 
 await scene.init();
@@ -37,11 +48,14 @@ async function ensureState() {
 async function startReading() {
   if (busy) return;
   busy = true;
+  const audioReady = audio.prepareForInteraction();
   ui.showShuffle();
   try {
     const currentState = await ensureState();
     currentState.reset();
     scene.toHomeDeck();
+    if (!(await audioReady)) ui.setAudioEnabled(false, audio.available);
+    audio.playCue('ritual-start');
     await scene.beginShuffle();
     ui.showDraw(currentState.drawn.length, currentState.deck.length);
   } finally {
@@ -103,6 +117,7 @@ async function closeReading() {
 
 function resetReading() {
   if (busy) return;
+  audio.playCue('restart');
   state?.reset();
   scene.reset();
   ui.showHome();

@@ -10,6 +10,7 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const CARD_GAP = 0.058;
 const SHUFFLE_CARD_COUNT = 16;
 const DRAW_POOL_COUNT = 15;
+const CARD_FLIP_DURATION = 390;
 const DOMAIN_STEP = Math.PI * 2 / 8;
 const DRAG_THRESHOLD = 7;
 export const FAN_INERTIA_FRICTION = 7.5;
@@ -547,6 +548,7 @@ export class TarotScene {
       this.pointer.lastTime = now;
       this.pointer.velocity = THREE.MathUtils.lerp(this.pointer.velocity, instantVelocity, 0.42);
       if (Math.hypot(event.clientX - this.pointer.startX, event.clientY - this.pointer.startY) > DRAG_THRESHOLD) this.pointer.moved = true;
+      if (this.pointer.moved) this.callbacks.onSound?.('fan-swipe');
       this.drawOffset += offsetDelta;
       this.recycleDrawPool();
       this.layoutDraw(false);
@@ -557,6 +559,7 @@ export class TarotScene {
       this.pointer = null;
       if (canvas.hasPointerCapture?.(pointer.id)) canvas.releasePointerCapture(pointer.id);
       if (this.stage === 'draw') {
+        this.callbacks.onSoundStop?.('fan-swipe');
         if (pointer.moved) {
           this.startFanInertia(pointer.velocity);
           return;
@@ -570,6 +573,7 @@ export class TarotScene {
     });
     const cancelPointer = (event) => {
       if (event && this.pointer?.id !== event.pointerId) return;
+      this.callbacks.onSoundStop?.('fan-swipe');
       this.pointer = null;
       if (this.stage === 'draw') {
         this.startFanSettle(140);
@@ -660,6 +664,7 @@ export class TarotScene {
 
   async beginShuffle() {
     this.stage = 'shuffle';
+    this.callbacks.onSound?.('deck-shuffle');
     const visualDeck = this.cards.slice(0, SHUFFLE_CARD_COUNT);
     visualDeck.forEach((card) => { card.group.visible = true; card.clearFront(); card.setFaceDown(); });
     await Promise.all([
@@ -684,6 +689,8 @@ export class TarotScene {
       this.animateCameraPose(this.cameraPose('draw'), 540),
       this.layoutDraw(true, 540)
     ]);
+    this.callbacks.onSoundStop?.('deck-shuffle');
+    this.callbacks.onSoundStop?.('ritual-start');
     this.altar.setNodeFrame?.('draw');
     this.stage = 'draw';
   }
@@ -876,6 +883,7 @@ export class TarotScene {
     if (!selectedCard || !this.drawPool.includes(selectedCard)) throw new Error('牌扇中没有可选择的卡牌');
     this.drawBusy = true;
     this.cancelFanMotion();
+    this.callbacks.onSoundStop?.('fan-swipe');
     const card = selectedCard;
     const start = copyPose(card.group);
     const replacementEntry = replaceDrawPoolCard(this.drawPool, this.unusedPool, card);
@@ -886,6 +894,7 @@ export class TarotScene {
 
     try {
       const { replacement, entersFromRight } = replacementEntry;
+      this.callbacks.onSound?.('card-selection');
       if (replacement) {
         replacement.clearFront();
         replacement.setFaceDown();
@@ -902,6 +911,7 @@ export class TarotScene {
       this.drawOffset = 0;
       const frontTexture = this.textures.getFront(cardData.id);
       this.altar.awakenNode(positionIndex);
+      this.callbacks.onSound?.('card-lift');
       const tactile = pose(
         start.position.x,
         start.position.y + 0.075,
@@ -927,15 +937,19 @@ export class TarotScene {
       ]);
 
       card.setCard(cardData, await frontTexture);
+      this.callbacks.onSound?.('card-flip');
       await Promise.all([
-        this.animateObject(card.group, pose(reveal.position.x, reveal.position.y, reveal.position.z, 0, Math.PI, 0, reveal.scale.x), 390, easing.inOutCubic),
-        this.animateCameraPose(drawCamera, 390)
+        this.animateObject(card.group, pose(reveal.position.x, reveal.position.y, reveal.position.z, 0, Math.PI, 0, reveal.scale.x), CARD_FLIP_DURATION, easing.inOutCubic),
+        this.animateCameraPose(drawCamera, CARD_FLIP_DURATION)
       ]);
       await pause(110);
       const target = this.drawStageSpreadPose(positionIndex);
+      this.callbacks.onSound?.('card-flight');
       await this.animateFlight(card, target);
       const landingTarget = this.drawStageSpreadPose(positionIndex);
+      this.callbacks.onSound?.('card-landing');
       await this.settleCard(card, landingTarget);
+      this.callbacks.onSoundStop?.('card-landing');
       this.spreadCards[positionIndex] = card;
       card.group.userData.spreadIndex = positionIndex;
       this.altar.setNodeState(positionIndex, 'filled');
@@ -949,6 +963,7 @@ export class TarotScene {
   async completeSpread() {
     this.stage = 'completing';
     await pause(120);
+    this.callbacks.onSound?.('eighth-completion');
     await tween(680, (amount) => {
       this.altar.sigil.scale.setScalar(1 + Math.sin(amount * Math.PI) * 0.1);
       this.altar.setCompletion(amount);
@@ -961,6 +976,7 @@ export class TarotScene {
     if (this.stage !== 'results' || this.reading) return;
     const card = this.spreadCards[index];
     if (!card) return;
+    this.callbacks.onSound?.('reading-open');
     const others = this.spreadCards
       .map((other) => (other && other !== card ? { card: other, slot: copyPose(other.group) } : null))
       .filter(Boolean);
@@ -980,6 +996,7 @@ export class TarotScene {
 
   async closeReading() {
     if (!this.reading) return;
+    this.callbacks.onSound?.('reading-close');
     const { card, slot, others } = this.reading;
     const layoutVersion = this.layoutVersion;
     const isCurrentLayout = () => layoutVersion === this.layoutVersion && this.reading?.card === card;
