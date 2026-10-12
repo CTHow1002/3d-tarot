@@ -146,7 +146,7 @@ const uniqueHtmlValue = (pattern, label) => {
 };
 const productTitle = '月间 · 3D 塔罗圣坛';
 const productDescription = '抽取八张塔罗牌，从八个角度安静地看看最近的生活。';
-const productionUrl = 'https://moonlit-tarot-3d-preview.netlify.app/';
+const productionUrl = 'https://moonlit-tarot-3d.netlify.app/';
 const socialImageUrl = `${productionUrl}social-preview.png`;
 assert.equal(uniqueHtmlValue(/<title>([^<]+)<\/title>/g, 'Title'), productTitle);
 assert.equal(uniqueHtmlValue(/<meta name="description" content="([^"]+)"\s*\/>/g, 'Description'), productDescription);
@@ -177,6 +177,14 @@ for (const asset of ['social-preview.png', 'favicon.png', 'apple-touch-icon.png'
 assert.deepEqual(pngDimensions(resolve('public/social-preview.png')), [1200, 630], 'Social preview must be 1200×630');
 assert.deepEqual(pngDimensions(resolve('public/favicon.png')), [32, 32], 'Favicon must be 32×32');
 assert.deepEqual(pngDimensions(resolve('public/apple-touch-icon.png')), [180, 180], 'Apple Touch Icon must be 180×180');
+const oldPreviewDomain = ['moonlit-tarot-3d', 'preview.netlify.app'].join('-');
+const containsOldPreviewDomain = (directory) => readdirSync(directory, { withFileTypes: true }).some((entry) => {
+  const path = resolve(directory, entry.name);
+  if (entry.isDirectory()) return containsOldPreviewDomain(path);
+  if (!/\.(?:css|html|js|json|mjs|svg|txt)$/.test(entry.name)) return false;
+  return readFileSync(path, 'utf8').includes(oldPreviewDomain);
+});
+assert.equal(indexHtml.includes(oldPreviewDomain) || ['src', 'scripts', 'public'].some(containsOldPreviewDomain), false, 'Old preview domain must not remain in Tarot source');
 
 const layouts = [
   [390, 844, 'standard-mobile'],
